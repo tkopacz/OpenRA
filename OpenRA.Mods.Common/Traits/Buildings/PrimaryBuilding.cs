@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,6 +9,7 @@
  */
 #endregion
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Mods.Common.Orders;
@@ -33,32 +34,33 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly string PrimaryCondition = null;
 
 		[NotificationReference("Speech")]
-		[Desc("The speech notification to play when selecting a primary building.")]
+		[Desc("Speech notification to play when selecting a primary building.")]
 		public readonly string SelectionNotification = null;
 
-		[Desc("List of production queues for which the primary flag should be set.",
-			"If empty, the list given in the `Produces` property of the `Production` trait will be used.")]
-		public readonly string[] ProductionQueues = { };
+		[Desc("Text notification to display when selecting a primary building.")]
+		public readonly string SelectionTextNotification = null;
 
-		public override object Create(ActorInitializer init) { return new PrimaryBuilding(init.Self, this); }
+		[Desc("List of production queues for which the primary flag should be set.",
+			"If empty, the list given in the `Produces` property of the `" + nameof(Production) + "` trait will be used.")]
+		public readonly string[] ProductionQueues = Array.Empty<string>();
+
+		[CursorReference]
+		[Desc("Cursor to display when setting the primary building.")]
+		public readonly string Cursor = "deploy";
+
+		public override object Create(ActorInitializer init) { return new PrimaryBuilding(this); }
 	}
 
-	public class PrimaryBuilding : ConditionalTrait<PrimaryBuildingInfo>, INotifyCreated, IIssueOrder, IResolveOrder
+	public class PrimaryBuilding : ConditionalTrait<PrimaryBuildingInfo>, IIssueOrder, IResolveOrder
 	{
 		const string OrderID = "PrimaryProducer";
 
-		ConditionManager conditionManager;
-		int primaryToken = ConditionManager.InvalidConditionToken;
+		int primaryToken = Actor.InvalidConditionToken;
 
 		public bool IsPrimary { get; private set; }
 
-		public PrimaryBuilding(Actor self, PrimaryBuildingInfo info)
+		public PrimaryBuilding(PrimaryBuildingInfo info)
 			: base(info) { }
-
-		void INotifyCreated.Created(Actor self)
-		{
-			conditionManager = self.TraitOrDefault<ConditionManager>();
-		}
 
 		IEnumerable<IOrderTargeter> IIssueOrder.Orders
 		{
@@ -67,11 +69,11 @@ namespace OpenRA.Mods.Common.Traits
 				if (IsTraitDisabled)
 					yield break;
 
-				yield return new DeployOrderTargeter(OrderID, 1);
+				yield return new DeployOrderTargeter(OrderID, 1, () => Info.Cursor);
 			}
 		}
 
-		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order.OrderID == OrderID)
 				return new Order(order.OrderID, self, false);
@@ -81,9 +83,11 @@ namespace OpenRA.Mods.Common.Traits
 
 		void IResolveOrder.ResolveOrder(Actor self, Order order)
 		{
-			var forceRallyPoint = RallyPoint.IsForceSet(order);
-			if (order.OrderString == OrderID || forceRallyPoint)
-				SetPrimaryProducer(self, !IsPrimary || forceRallyPoint);
+			if (order.OrderString == OrderID)
+				SetPrimaryProducer(self, !IsPrimary);
+
+			if (RallyPoint.IsForceSet(order) && !IsPrimary)
+				SetPrimaryProducer(self, true);
 		}
 
 		public void SetPrimaryProducer(Actor self, bool isPrimary)
@@ -108,13 +112,14 @@ namespace OpenRA.Mods.Common.Traits
 						b.Trait.SetPrimaryProducer(b.Actor, false);
 				}
 
-				if (conditionManager != null && primaryToken == ConditionManager.InvalidConditionToken && !string.IsNullOrEmpty(Info.PrimaryCondition))
-					primaryToken = conditionManager.GrantCondition(self, Info.PrimaryCondition);
+				if (primaryToken == Actor.InvalidConditionToken)
+					primaryToken = self.GrantCondition(Info.PrimaryCondition);
 
 				Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", Info.SelectionNotification, self.Owner.Faction.InternalName);
+				TextNotificationsManager.AddTransientLine(Info.SelectionTextNotification, self.Owner);
 			}
-			else if (primaryToken != ConditionManager.InvalidConditionToken)
-				primaryToken = conditionManager.RevokeCondition(self, primaryToken);
+			else if (primaryToken != Actor.InvalidConditionToken)
+				primaryToken = self.RevokeCondition(primaryToken);
 		}
 
 		protected override void TraitEnabled(Actor self) { }

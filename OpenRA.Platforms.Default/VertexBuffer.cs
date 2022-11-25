@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -57,10 +57,15 @@ namespace OpenRA.Platforms.Default
 
 		public void SetData(T[] data, int length)
 		{
-			SetData(data, 0, length);
+			SetData(data, 0, 0, length);
 		}
 
-		public void SetData(T[] data, int start, int length)
+		public void SetData(ref T[] data, int length)
+		{
+			SetData(data, 0, 0, length);
+		}
+
+		public void SetData(T[] data, int offset, int start, int length)
 		{
 			Bind();
 
@@ -70,23 +75,13 @@ namespace OpenRA.Platforms.Default
 				OpenGL.glBufferSubData(OpenGL.GL_ARRAY_BUFFER,
 					new IntPtr(VertexSize * start),
 					new IntPtr(VertexSize * length),
-					ptr.AddrOfPinnedObject());
+					ptr.AddrOfPinnedObject() + VertexSize * offset);
 			}
 			finally
 			{
 				ptr.Free();
 			}
 
-			OpenGL.CheckGLError();
-		}
-
-		public void SetData(IntPtr data, int start, int length)
-		{
-			Bind();
-			OpenGL.glBufferSubData(OpenGL.GL_ARRAY_BUFFER,
-				new IntPtr(VertexSize * start),
-				new IntPtr(VertexSize * length),
-				data);
 			OpenGL.CheckGLError();
 		}
 
@@ -101,15 +96,11 @@ namespace OpenRA.Platforms.Default
 			OpenGL.CheckGLError();
 			OpenGL.glVertexAttribPointer(Shader.TexMetadataAttributeIndex, 2, OpenGL.GL_FLOAT, false, VertexSize, new IntPtr(28));
 			OpenGL.CheckGLError();
+			OpenGL.glVertexAttribPointer(Shader.TintAttributeIndex, 4, OpenGL.GL_FLOAT, false, VertexSize, new IntPtr(36));
+			OpenGL.CheckGLError();
 		}
 
 		public void Dispose()
-		{
-			Dispose(true);
-			GC.SuppressFinalize(this);
-		}
-
-		void Dispose(bool disposing)
 		{
 			if (disposed)
 				return;

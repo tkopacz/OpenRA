@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -20,7 +20,7 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Dig animation image to play when transitioning.")]
 		public readonly string SubterraneanTransitionImage = null;
 
-		[SequenceReference("SubterraneanTransitionImage")]
+		[SequenceReference(nameof(SubterraneanTransitionImage))]
 		[Desc("Dig animation sequence to play when transitioning.")]
 		public readonly string SubterraneanTransitionSequence = null;
 
@@ -30,7 +30,7 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Dig sound to play when transitioning.")]
 		public readonly string SubterraneanTransitionSound = null;
 
-		public override object Create(ActorInitializer init) { return new GrantConditionOnSubterraneanLayer(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new GrantConditionOnSubterraneanLayer(this); }
 
 		public override void RulesetLoaded(Ruleset rules, ActorInfo ai)
 		{
@@ -42,12 +42,12 @@ namespace OpenRA.Mods.Common.Traits
 		}
 	}
 
-	public class GrantConditionOnSubterraneanLayer : GrantConditionOnLayer<GrantConditionOnSubterraneanLayerInfo>, INotifyVisualPositionChanged
+	public class GrantConditionOnSubterraneanLayer : GrantConditionOnLayer<GrantConditionOnSubterraneanLayerInfo>, INotifyCenterPositionChanged
 	{
 		WDist transitionDepth;
 
-		public GrantConditionOnSubterraneanLayer(Actor self, GrantConditionOnSubterraneanLayerInfo info)
-			: base(self, info, CustomMovementLayerType.Subterranean) { }
+		public GrantConditionOnSubterraneanLayer(GrantConditionOnSubterraneanLayerInfo info)
+			: base(info, CustomMovementLayerType.Subterranean) { }
 
 		protected override void Created(Actor self)
 		{
@@ -68,17 +68,17 @@ namespace OpenRA.Mods.Common.Traits
 				Game.Sound.Play(SoundType.World, Info.SubterraneanTransitionSound);
 		}
 
-		void INotifyVisualPositionChanged.VisualPositionChanged(Actor self, byte oldLayer, byte newLayer)
+		void INotifyCenterPositionChanged.CenterPositionChanged(Actor self, byte oldLayer, byte newLayer)
 		{
 			var depth = self.World.Map.DistanceAboveTerrain(self.CenterPosition);
 
 			// Grant condition when new layer is Subterranean and depth is lower than transition depth,
 			// revoke condition when new layer is not Subterranean and depth is at or higher than transition depth.
-			if (newLayer == ValidLayerType && depth < transitionDepth && conditionToken == ConditionManager.InvalidConditionToken)
-				conditionToken = conditionManager.GrantCondition(self, Info.Condition);
-			else if (newLayer != ValidLayerType && depth > transitionDepth && conditionToken != ConditionManager.InvalidConditionToken)
+			if (newLayer == ValidLayerType && depth < transitionDepth && conditionToken == Actor.InvalidConditionToken)
+				conditionToken = self.GrantCondition(Info.Condition);
+			else if (newLayer != ValidLayerType && depth > transitionDepth && conditionToken != Actor.InvalidConditionToken)
 			{
-				conditionToken = conditionManager.RevokeCondition(self, conditionToken);
+				conditionToken = self.RevokeCondition(conditionToken);
 				PlayTransitionAudioVisuals(self, self.Location);
 			}
 		}

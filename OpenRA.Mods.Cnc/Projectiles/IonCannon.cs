@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,7 +10,6 @@
 #endregion
 
 using System.Collections.Generic;
-using System.Linq;
 using OpenRA.GameRules;
 using OpenRA.Graphics;
 using OpenRA.Traits;
@@ -28,7 +27,7 @@ namespace OpenRA.Mods.Cnc.Effects
 		int weaponDelay;
 		bool impacted = false;
 
-		public IonCannon(Player firedBy, WeaponInfo weapon, World world, WPos launchPos, Target target, string effect, string sequence, string palette, int delay)
+		public IonCannon(Player firedBy, WeaponInfo weapon, World world, WPos launchPos, in Target target, string effect, string sequence, string palette, int delay)
 		{
 			this.target = target;
 			this.firedBy = firedBy;
@@ -38,16 +37,25 @@ namespace OpenRA.Mods.Cnc.Effects
 			anim = new Animation(world, effect);
 			anim.PlayThen(sequence, () => Finish(world));
 
-			if (weapon.Report != null && weapon.Report.Any())
+			if (weapon.Report != null && weapon.Report.Length > 0)
 				Game.Sound.Play(SoundType.World, weapon.Report, world, launchPos);
 		}
 
 		public void Tick(World world)
 		{
 			anim.Tick();
+
 			if (!impacted && weaponDelay-- <= 0)
 			{
-				weapon.Impact(target, firedBy.PlayerActor, Enumerable.Empty<int>());
+				var warheadArgs = new WarheadArgs
+				{
+					Weapon = weapon,
+					Source = target.CenterPosition,
+					SourceActor = firedBy.PlayerActor,
+					WeaponTarget = target
+				};
+
+				weapon.Impact(target, warheadArgs);
 				impacted = true;
 			}
 		}

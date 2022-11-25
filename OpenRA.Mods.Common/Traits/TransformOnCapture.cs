@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -16,7 +16,7 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("Replaces the captured actor with a new one.")]
-	public class TransformOnCaptureInfo : ITraitInfo
+	public class TransformOnCaptureInfo : TraitInfo
 	{
 		[ActorReference]
 		[FieldLoader.Require]
@@ -27,9 +27,9 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly bool SkipMakeAnims = true;
 
 		[Desc("Transform only if the capturer's CaptureTypes overlap with these types. Leave empty to allow all types.")]
-		public readonly BitSet<CaptureType> CaptureTypes = default(BitSet<CaptureType>);
+		public readonly BitSet<CaptureType> CaptureTypes = default;
 
-		public virtual object Create(ActorInitializer init) { return new TransformOnCapture(init, this); }
+		public override object Create(ActorInitializer init) { return new TransformOnCapture(init, this); }
 	}
 
 	public class TransformOnCapture : INotifyCapture
@@ -40,7 +40,7 @@ namespace OpenRA.Mods.Common.Traits
 		public TransformOnCapture(ActorInitializer init, TransformOnCaptureInfo info)
 		{
 			this.info = info;
-			faction = init.Contains<FactionInit>() ? init.Get<FactionInit, string>() : init.Self.Owner.Faction.InternalName;
+			faction = init.GetValue<FactionInit, string>(init.Self.Owner.Faction.InternalName);
 		}
 
 		void INotifyCapture.OnCapture(Actor self, Actor captor, Player oldOwner, Player newOwner, BitSet<CaptureType> captureTypes)
@@ -49,11 +49,10 @@ namespace OpenRA.Mods.Common.Traits
 				return;
 
 			var facing = self.TraitOrDefault<IFacing>();
-			var transform = new Transform(self, info.IntoActor) { ForceHealthPercentage = info.ForceHealthPercentage, Faction = faction };
+			var transform = new Transform(info.IntoActor) { ForceHealthPercentage = info.ForceHealthPercentage, Faction = faction };
 			if (facing != null) transform.Facing = facing.Facing;
 			transform.SkipMakeAnims = info.SkipMakeAnims;
-			self.CancelActivity();
-			self.QueueActivity(transform);
+			self.QueueActivity(false, transform);
 		}
 	}
 }

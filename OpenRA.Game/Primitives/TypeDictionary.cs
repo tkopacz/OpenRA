@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -41,6 +41,11 @@ namespace OpenRA.Primitives
 			return data.ContainsKey(typeof(T));
 		}
 
+		public bool Contains(Type t)
+		{
+			return data.ContainsKey(t);
+		}
+
 		public T Get<T>()
 		{
 			return (T)Get(typeof(T), true);
@@ -50,31 +55,29 @@ namespace OpenRA.Primitives
 		{
 			var result = Get(typeof(T), false);
 			if (result == null)
-				return default(T);
+				return default;
 			return (T)result;
 		}
 
 		object Get(Type t, bool throwsIfMissing)
 		{
-			List<object> ret;
-			if (!data.TryGetValue(t, out ret))
+			if (!data.TryGetValue(t, out var ret))
 			{
 				if (throwsIfMissing)
-					throw new InvalidOperationException("TypeDictionary does not contain instance of type `{0}`".F(t));
+					throw new InvalidOperationException($"TypeDictionary does not contain instance of type `{t}`");
 				return null;
 			}
 
 			if (ret.Count > 1)
-				throw new InvalidOperationException("TypeDictionary contains multiple instances of type `{0}`".F(t));
+				throw new InvalidOperationException($"TypeDictionary contains multiple instances of type `{t}`");
 			return ret[0];
 		}
 
 		public IEnumerable<T> WithInterface<T>()
 		{
-			List<object> objs;
-			if (data.TryGetValue(typeof(T), out objs))
+			if (data.TryGetValue(typeof(T), out var objs))
 				return objs.Cast<T>();
-			return new T[0];
+			return Array.Empty<T>();
 		}
 
 		public void Remove<T>(T val)
@@ -89,8 +92,7 @@ namespace OpenRA.Primitives
 
 		void InnerRemove(Type t, object val)
 		{
-			List<object> objs;
-			if (!data.TryGetValue(t, out objs))
+			if (!data.TryGetValue(t, out var objs))
 				return;
 			objs.Remove(val);
 			if (objs.Count == 0)

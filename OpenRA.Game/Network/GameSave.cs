@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -25,6 +25,7 @@ namespace OpenRA.Network
 		public readonly string Faction;
 		public readonly int SpawnPoint;
 		public readonly int Team;
+		public readonly int Handicap;
 		public readonly string Slot;
 		public readonly string Bot;
 		public readonly bool IsAdmin;
@@ -39,6 +40,7 @@ namespace OpenRA.Network
 			Faction = client.Faction;
 			SpawnPoint = client.SpawnPoint;
 			Team = client.Team;
+			Handicap = client.Handicap;
 			Slot = client.Slot;
 			Bot = client.Bot;
 			IsAdmin = client.IsAdmin;
@@ -53,6 +55,7 @@ namespace OpenRA.Network
 			client.Faction = Faction;
 			client.SpawnPoint = SpawnPoint;
 			client.Team = Team;
+			client.Handicap = Handicap;
 			client.Slot = Slot;
 			client.Bot = Bot;
 			client.IsAdmin = IsAdmin;
@@ -68,7 +71,7 @@ namespace OpenRA.Network
 
 		public MiniYamlNode Serialize(string key)
 		{
-			return new MiniYamlNode("SlotClient@{0}".F(key), FieldSaver.Save(this));
+			return new MiniYamlNode($"SlotClient@{key}", FieldSaver.Save(this));
 		}
 	}
 
@@ -83,7 +86,7 @@ namespace OpenRA.Network
 		// Loaded from file and updated during gameplay
 		public int LastOrdersFrame { get; private set; }
 		public int LastSyncFrame { get; private set; }
-		byte[] lastSyncPacket = new byte[0];
+		byte[] lastSyncPacket = Array.Empty<byte>();
 
 		// Loaded from file or set on game start
 		public Session.Global GlobalSettings { get; private set; }
@@ -92,7 +95,7 @@ namespace OpenRA.Network
 		public Dictionary<int, MiniYaml> TraitData = new Dictionary<int, MiniYaml>();
 
 		// Set on game start
-		int[] clientsBySlotIndex = { };
+		int[] clientsBySlotIndex = Array.Empty<int>();
 		int firstBotSlotIndex = -1;
 
 		public GameSave()
@@ -117,7 +120,7 @@ namespace OpenRA.Network
 
 				LastOrdersFrame = rs.ReadInt32();
 				LastSyncFrame = rs.ReadInt32();
-				lastSyncPacket = rs.ReadBytes(5);
+				lastSyncPacket = rs.ReadBytes(Order.SyncHashOrderLength);
 
 				var globalSettings = MiniYaml.FromString(rs.ReadString(Encoding.UTF8, Connection.MaxOrderLength));
 				GlobalSettings = Session.Global.Deserialize(globalSettings[0].Value);
@@ -188,8 +191,14 @@ namespace OpenRA.Network
 		public void DispatchOrders(Connection conn, int frame, byte[] data)
 		{
 			// Sync packet - we only care about the last value
-			if (data.Length > 0 && data[0] == 0x65 && frame > LastSyncFrame)
+			if (data.Length > 0 && data[0] == (byte)OrderType.SyncHash && frame > LastSyncFrame)
 			{
+				if (data.Length != Order.SyncHashOrderLength)
+				{
+					Log.Write("debug", $"Dropped sync order with length {data.Length}. Expected length {Order.SyncHashOrderLength}.");
+					return;
+				}
+
 				LastSyncFrame = frame;
 				lastSyncPacket = data;
 			}
@@ -230,7 +239,7 @@ namespace OpenRA.Network
 			foreach (var kv in TraitData)
 			{
 				var data = new List<MiniYamlNode>() { new MiniYamlNode(kv.Key.ToString(), kv.Value) }.WriteToString();
-				packetFn(0, 0, new ServerOrder("SaveTraitData", data).Serialize());
+				packetFn(0, 0, Order.FromTargetString("SaveTraitData", data, true).Serialize());
 			}
 
 			ordersStream.Seek(0, SeekOrigin.Begin);
@@ -282,7 +291,7 @@ namespace OpenRA.Network
 			file.Write(BitConverter.GetBytes(MetadataMarker), 0, 4);
 			file.Write(BitConverter.GetBytes(LastOrdersFrame), 0, 4);
 			file.Write(BitConverter.GetBytes(LastSyncFrame), 0, 4);
-			file.Write(lastSyncPacket, 0, 5);
+			file.Write(lastSyncPacket, 0, Order.SyncHashOrderLength);
 
 			var globalSettingsNodes = new List<MiniYamlNode>() { GlobalSettings.Serialize() };
 			file.WriteString(Encoding.UTF8, globalSettingsNodes.WriteToString());

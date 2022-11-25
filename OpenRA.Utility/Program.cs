@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -24,7 +24,7 @@ namespace OpenRA
 	{
 		public readonly string Command;
 		public NoSuchCommandException(string command)
-			: base("No such command '{0}'".F(command))
+			: base($"No such command '{command}'")
 		{
 			Command = command;
 		}
@@ -40,6 +40,22 @@ namespace OpenRA
 	{
 		static void Main(string[] args)
 		{
+			try
+			{
+				Run(args);
+			}
+			finally
+			{
+				Log.Dispose();
+			}
+		}
+
+		static void Run(string[] args)
+		{
+			var engineDir = Environment.GetEnvironmentVariable("ENGINE_DIR");
+			if (!string.IsNullOrEmpty(engineDir))
+				Platform.OverrideEngineDir(engineDir);
+
 			Log.AddChannel("perf", null);
 			Log.AddChannel("debug", null);
 
@@ -48,16 +64,16 @@ namespace OpenRA
 			var envModSearchPaths = Environment.GetEnvironmentVariable("MOD_SEARCH_PATHS");
 			var modSearchPaths = !string.IsNullOrWhiteSpace(envModSearchPaths) ?
 				FieldLoader.GetValue<string[]>("MOD_SEARCH_PATHS", envModSearchPaths) :
-				new[] { Path.Combine(".", "mods") };
+				new[] { Path.Combine(Platform.EngineDir, "mods") };
 
 			if (args.Length == 0)
 			{
-				PrintUsage(new InstalledMods(modSearchPaths, new string[0]), null);
+				PrintUsage(new InstalledMods(modSearchPaths, Array.Empty<string>()), null);
 				return;
 			}
 
 			var modId = args[0];
-			var explicitModPaths = new string[0];
+			var explicitModPaths = Array.Empty<string>();
 			if (File.Exists(modId) || Directory.Exists(modId))
 			{
 				explicitModPaths = new[] { modId };
@@ -103,18 +119,22 @@ namespace OpenRA
 				}
 				else
 				{
-					Console.WriteLine("Invalid arguments for '{0}'", command);
+					Console.WriteLine($"Invalid arguments for '{command}'");
 					GetActionUsage(command, action);
+					Environment.Exit(1);
 				}
 			}
 			catch (Exception e)
 			{
 				Log.AddChannel("utility", "utility.log");
-				Log.Write("utility", "Received args: {0}", args.JoinWith(" "));
-				Log.Write("utility", "{0}", e);
+				Log.Write("utility", $"Received args: {args.JoinWith(" ")}");
+				Log.Write("utility", e);
 
 				if (e is NoSuchCommandException)
+				{
 					Console.WriteLine(e.Message);
+					Environment.Exit(1);
+				}
 				else
 				{
 					Console.WriteLine("Error: Utility application crashed. See utility.log for details");

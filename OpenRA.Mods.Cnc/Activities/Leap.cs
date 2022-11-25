@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,7 +11,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using OpenRA.Activities;
 using OpenRA.Mods.Cnc.Traits;
 using OpenRA.Mods.Common.Traits;
@@ -37,7 +36,7 @@ namespace OpenRA.Mods.Cnc.Activities
 		int ticks = 0;
 		WPos targetPosition;
 
-		public Leap(Actor self, Target target, Mobile mobile, Mobile targetMobile, int speed, AttackLeap attack, EdibleByLeap edible)
+		public Leap(in Target target, Mobile mobile, Mobile targetMobile, int speed, AttackLeap attack, EdibleByLeap edible)
 		{
 			this.mobile = mobile;
 			this.targetMobile = targetMobile;
@@ -70,26 +69,17 @@ namespace OpenRA.Mods.Cnc.Activities
 			attack.GrantLeapCondition(self);
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
-			if (canceled)
-				return NextActivity;
-
 			// Correct the visual position after we jumped
-			if (jumpComplete)
-			{
-				if (ChildActivity == null)
-					return NextActivity;
-
-				ChildActivity = ActivityUtils.RunActivity(self, ChildActivity);
-				return this;
-			}
+			if (canceled || jumpComplete)
+				return true;
 
 			if (target.Type != TargetType.Invalid)
 				targetPosition = target.CenterPosition;
 
 			var position = length > 1 ? WPos.Lerp(origin, targetPosition, ticks, length - 1) : targetPosition;
-			mobile.SetVisualPosition(self, position);
+			mobile.SetCenterPosition(self, position);
 
 			// We are at the destination
 			if (++ticks >= length)
@@ -101,17 +91,19 @@ namespace OpenRA.Mods.Cnc.Activities
 				// (This does not update the visual position!)
 				mobile.SetLocation(destinationCell, destinationSubCell, destinationCell, destinationSubCell);
 
+				// Update movement which results in movementType set to MovementType.None.
+				// This is needed to prevent the move animation from playing.
+				mobile.UpdateMovement();
+
 				// Revoke the condition before attacking, as it is usually used to pause the attack trait
 				attack.RevokeLeapCondition(self);
 				attack.DoAttack(self, target);
 
 				jumpComplete = true;
-				QueueChild(self, mobile.VisualMove(self, position, self.World.Map.CenterOfSubCell(destinationCell, destinationSubCell)), true);
-
-				return this;
+				QueueChild(mobile.LocalMove(self, position, self.World.Map.CenterOfSubCell(destinationCell, destinationSubCell)));
 			}
 
-			return this;
+			return false;
 		}
 
 		protected override void OnLastRun(Actor self)

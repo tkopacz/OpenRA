@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -20,6 +20,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 {
 	public class ModContentLogic : ChromeLogic
 	{
+		readonly ModData modData;
 		readonly ModContent content;
 		readonly ScrollPanelWidget scrollPanel;
 		readonly Widget template;
@@ -27,11 +28,15 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 		readonly Dictionary<string, ModContent.ModSource> sources = new Dictionary<string, ModContent.ModSource>();
 		readonly Dictionary<string, ModContent.ModDownload> downloads = new Dictionary<string, ModContent.ModDownload>();
 
-		bool discAvailable;
+		bool sourceAvailable;
+
+		[TranslationReference]
+		static readonly string ManualInstall = "manual-install";
 
 		[ObjectCreator.UseCtor]
-		public ModContentLogic(Widget widget, ModData modData, Manifest mod, ModContent content, Action onCancel)
+		public ModContentLogic(ModData modData, Widget widget, Manifest mod, ModContent content, Action onCancel)
 		{
+			this.modData = modData;
 			this.content = content;
 
 			var panel = widget.Get("CONTENT_PANEL");
@@ -43,11 +48,11 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 			var sourceYaml = MiniYaml.Load(modFileSystem, content.Sources, null);
 			foreach (var s in sourceYaml)
-				sources.Add(s.Key, new ModContent.ModSource(s.Value));
+				sources.Add(s.Key, new ModContent.ModSource(s.Value, modObjectCreator));
 
 			var downloadYaml = MiniYaml.Load(modFileSystem, content.Downloads, null);
 			foreach (var d in downloadYaml)
-				downloads.Add(d.Key, new ModContent.ModDownload(d.Value));
+				downloads.Add(d.Key, new ModContent.ModDownload(d.Value, modObjectCreator));
 
 			modFileSystem.UnmountAll();
 
@@ -55,7 +60,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			template = scrollPanel.Get<ContainerWidget>("PACKAGE_TEMPLATE");
 
 			var headerTemplate = panel.Get<LabelWidget>("HEADER_TEMPLATE");
-			var headerLines = !string.IsNullOrEmpty(content.HeaderMessage) ? content.HeaderMessage.Replace("\\n", "\n").Split('\n') : new string[0];
+			var headerLines = !string.IsNullOrEmpty(content.HeaderMessage) ? content.HeaderMessage.Replace("\\n", "\n").Split('\n') : Array.Empty<string>();
 			var headerHeight = 0;
 			foreach (var l in headerLines)
 			{
@@ -71,13 +76,12 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			panel.Bounds.Y -= headerHeight / 2;
 			scrollPanel.Bounds.Y += headerHeight;
 
-			var discButton = panel.Get<ButtonWidget>("CHECK_DISC_BUTTON");
-			discButton.Bounds.Y += headerHeight;
-			discButton.IsVisible = () => discAvailable;
+			var sourceButton = panel.Get<ButtonWidget>("CHECK_SOURCE_BUTTON");
+			sourceButton.Bounds.Y += headerHeight;
+			sourceButton.IsVisible = () => sourceAvailable;
 
-			discButton.OnClick = () => Ui.OpenWindow("DISC_INSTALL_PANEL", new WidgetArgs
+			sourceButton.OnClick = () => Ui.OpenWindow("SOURCE_INSTALL_PANEL", new WidgetArgs
 			{
-				{ "afterInstall", () => { } },
 				{ "sources", sources },
 				{ "content", content }
 			});
@@ -109,7 +113,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				var requiredWidget = container.Get<LabelWidget>("REQUIRED");
 				requiredWidget.IsVisible = () => p.Value.Required;
 
-				var sourceWidget = container.Get<ImageWidget>("DISC");
+				var sourceWidget = container.Get<ImageWidget>("SOURCE");
 				var sourceTitles = p.Value.Sources.Select(s => sources[s].Title).Distinct();
 				var sourceList = sourceTitles.JoinWith("\n");
 				var isSourceAvailable = sourceTitles.Any();
@@ -135,15 +139,18 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 				var installedWidget = container.Get<LabelWidget>("INSTALLED");
 				installedWidget.IsVisible = () => installed;
 
-				var requiresDiscWidget = container.Get<LabelWidget>("REQUIRES_DISC");
-				requiresDiscWidget.IsVisible = () => !installed && !downloadEnabled;
+				var requiresSourceWidget = container.Get<LabelWidget>("REQUIRES_SOURCE");
+				requiresSourceWidget.IsVisible = () => !installed && !downloadEnabled;
 				if (!isSourceAvailable)
-					requiresDiscWidget.GetText = () => "Manual Install";
+				{
+					var manualInstall = modData.Translation.GetString(ManualInstall);
+					requiresSourceWidget.GetText = () => manualInstall;
+				}
 
 				scrollPanel.AddChild(container);
 			}
 
-			discAvailable = content.Packages.Values.Any(p => p.Sources.Any() && !p.IsInstalled());
+			sourceAvailable = content.Packages.Values.Any(p => p.Sources.Length > 0 && !p.IsInstalled());
 		}
 	}
 }

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -13,7 +13,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using OpenRA.Graphics;
 using OpenRA.Primitives;
 using OpenRA.Traits;
 
@@ -21,6 +20,7 @@ namespace OpenRA
 {
 	public enum MouseScrollType { Disabled, Standard, Inverted, Joystick }
 	public enum StatusBarsType { Standard, DamageShow, AlwaysShow }
+	public enum TargetLinesType { Disabled, Manual, Automatic }
 
 	[Flags]
 	public enum MPGameFilters
@@ -33,10 +33,20 @@ namespace OpenRA
 		Incompatible = 16
 	}
 
+	[Flags]
+	public enum TextNotificationPoolFilters
+	{
+		None = 0,
+		Feedback = 1,
+		Transients = 2
+	}
+
+	public enum WorldViewport { Native, Close, Medium, Far }
+
 	public class ServerSettings
 	{
 		[Desc("Sets the server name.")]
-		public string Name = "OpenRA Game";
+		public string Name = "";
 
 		[Desc("Sets the internal port.")]
 		public int ListenPort = 1234;
@@ -47,26 +57,26 @@ namespace OpenRA
 		[Desc("Locks the game with a password.")]
 		public string Password = "";
 
-		[Desc("Allow users to enable NAT discovery for external IP detection and automatic port forwarding.")]
+		[Desc("Allow users to search UPnP/NAT-PMP enabled devices for automatic port forwarding.")]
 		public bool DiscoverNatDevices = false;
 
-		[Desc("Time in milliseconds to search for UPnP enabled NAT devices.")]
-		public int NatDiscoveryTimeout = 1000;
+		[Desc("Time in seconds for UPnP/NAT-PMP mappings to last.")]
+		public int NatPortMappingLifetime = 36000;
 
 		[Desc("Starts the game with a default map. Input as hash that can be obtained by the utility.")]
 		public string Map = null;
 
 		[Desc("Takes a comma separated list of IP addresses that are not allowed to join.")]
-		public string[] Ban = { };
+		public string[] Ban = Array.Empty<string>();
 
 		[Desc("For dedicated servers only, allow anonymous clients to join.")]
 		public bool RequireAuthentication = false;
 
 		[Desc("For dedicated servers only, if non-empty, only allow authenticated players with these profile IDs to join.")]
-		public int[] ProfileIDWhitelist = { };
+		public int[] ProfileIDWhitelist = Array.Empty<int>();
 
 		[Desc("For dedicated servers only, if non-empty, always reject players with these user IDs from joining.")]
-		public int[] ProfileIDBlacklist = { };
+		public int[] ProfileIDBlacklist = Array.Empty<int>();
 
 		[Desc("For dedicated servers only, controls whether a game can be started with just one human player in the lobby.")]
 		public bool EnableSingleplayer = false;
@@ -77,7 +87,32 @@ namespace OpenRA
 		[Desc("Enable client-side report generation to help debug desync errors.")]
 		public bool EnableSyncReports = false;
 
-		public string TimestampFormat = "s";
+		[Desc("Sets the timestamp format. Defaults to the ISO 8601 standard.")]
+		public string TimestampFormat = "yyyy-MM-ddTHH:mm:ss";
+
+		[Desc("Allow clients to see anonymised IPs for other clients.")]
+		public bool ShareAnonymizedIPs = true;
+
+		[Desc("Allow clients to see the country of other clients.")]
+		public bool EnableGeoIP = true;
+
+		[Desc("For dedicated servers only, save replays for all games played.")]
+		public bool RecordReplays = false;
+
+		[Desc("For dedicated servers only, treat maps that fail the lint checks as invalid.")]
+		public bool EnableLintChecks = true;
+
+		[Desc("Delay in milliseconds before newly joined players can send chat messages.")]
+		public int FloodLimitJoinCooldown = 5000;
+
+		[Desc("Amount of miliseconds player chat messages are tracked for.")]
+		public int FloodLimitInterval = 5000;
+
+		[Desc("Amount of chat messages per FloodLimitInterval a players can send before flood is detected.")]
+		public int FloodLimitMessageCount = 5;
+
+		[Desc("Delay in milliseconds before players can send chat messages after flood was detected.")]
+		public int FloodLimitCooldown = 15000;
 
 		public ServerSettings Clone()
 		{
@@ -93,7 +128,7 @@ namespace OpenRA
 		[Desc("Display a graph with various profiling traces")]
 		public bool PerfGraph = false;
 
-		[Desc("Numer of samples to average over when calculating tick and render times.")]
+		[Desc("Number of samples to average over when calculating tick and render times.")]
 		public int Samples = 25;
 
 		[Desc("Check whether a newer version is available online.")]
@@ -120,6 +155,9 @@ namespace OpenRA
 		[Desc("Enable the chat field during replays to allow use of console commands.")]
 		public bool EnableDebugCommandsInReplays = false;
 
+		[Desc("Enable perf.log output for traits, activities and effects.")]
+		public bool EnableSimulationPerfLogging = false;
+
 		[Desc("Amount of time required for triggering perf.log output.")]
 		public float LongTickThresholdMs = 1;
 
@@ -128,9 +166,6 @@ namespace OpenRA
 
 		[Desc("Throw an exception if the world sync hash changes while evaluating BotModules.")]
 		public bool SyncCheckBotModuleCode = false;
-
-		[Desc("Throw an exception if an actor activity is ticked after it has been marked as completed.")]
-		public bool StrictActivityChecking = false;
 	}
 
 	public class GraphicSettings
@@ -138,34 +173,49 @@ namespace OpenRA
 		[Desc("This can be set to Windowed, Fullscreen or PseudoFullscreen.")]
 		public WindowMode Mode = WindowMode.PseudoFullscreen;
 
+		[Desc("Enable VSync.")]
+		public bool VSync = true;
+
 		[Desc("Screen resolution in fullscreen mode.")]
 		public int2 FullscreenSize = new int2(0, 0);
 
 		[Desc("Screen resolution in windowed mode.")]
 		public int2 WindowedSize = new int2(1024, 768);
 
-		public bool HardwareCursors = true;
-
-		public bool PixelDouble = false;
 		public bool CursorDouble = false;
+		public WorldViewport ViewportDistance = WorldViewport.Medium;
+		public float UIScale = 1;
 
-		[Desc("Add a frame rate limiter. It is recommended to not disable this.")]
-		public bool CapFramerate = true;
+		[Desc("Add a frame rate limiter.")]
+		public bool CapFramerate = false;
 
 		[Desc("At which frames per second to cap the framerate.")]
 		public int MaxFramerate = 60;
 
-		[Desc("Disable high resolution DPI scaling on Windows operating systems.")]
-		public bool DisableWindowsDPIScaling = true;
+		[Desc("Set a frame rate limit of 1 render frame per game simulation frame (overrides CapFramerate/MaxFramerate).")]
+		public bool CapFramerateToGameFps = false;
 
-		[Desc("Disable separate OpenGL render thread on Windows operating systems.")]
-		public bool DisableWindowsRenderThread = true;
+		[Desc("Disable the OpenGL debug message callback feature.")]
+		public bool DisableGLDebugMessageCallback = false;
+
+		[Desc("Disable operating-system provided cursor rendering.")]
+		public bool DisableHardwareCursors = false;
+
+		[Desc("Disable legacy OpenGL 2.1 support.")]
+		public bool DisableLegacyGL = true;
+
+		[Desc("Display index to use in a multi-monitor fullscreen setup.")]
+		public int VideoDisplay = 0;
+
+		[Desc("Preferred OpenGL profile to use.",
+			"Modern: OpenGL Core Profile 3.2 or greater.",
+			"Embedded: OpenGL ES 3.0 or greater.",
+			"Legacy: OpenGL 2.1 with framebuffer_object extension (requires DisableLegacyGL: False)",
+			"Automatic: Use the first supported profile.")]
+		public GLProfile GLProfile = GLProfile.Automatic;
 
 		public int BatchSize = 8192;
 		public int SheetSize = 2048;
-
-		public string Language = "english";
-		public string DefaultLanguage = "english";
 	}
 
 	public class SoundSettings
@@ -181,15 +231,17 @@ namespace OpenRA
 
 		public bool CashTicks = true;
 		public bool Mute = false;
+		public bool MuteBackgroundMusic = false;
 	}
 
 	public class PlayerSettings
 	{
-		[Desc("Sets the player nickname for in-game and IRC chat.")]
-		public string Name = "Newbie";
-		public Color Color = Color.FromAhsl(75, 255, 180);
+		[Desc("Sets the player nickname.")]
+		public string Name = "Commander";
+		public Color Color = Color.FromArgb(200, 32, 32);
 		public string LastServer = "localhost:1234";
-		public Color[] CustomColors = { };
+		public Color[] CustomColors = Array.Empty<Color>();
+		public string Language = "en";
 	}
 
 	public class GameSettings
@@ -200,30 +252,43 @@ namespace OpenRA
 		public int ViewportEdgeScrollMargin = 5;
 
 		public bool LockMouseWindow = false;
-		public MouseScrollType MiddleMouseScroll = MouseScrollType.Standard;
-		public MouseScrollType RightMouseScroll = MouseScrollType.Disabled;
+		public MouseScrollType MouseScroll = MouseScrollType.Joystick;
 		public MouseButtonPreference MouseButtonPreference = new MouseButtonPreference();
-		public float ViewportEdgeScrollStep = 10f;
+		public float ViewportEdgeScrollStep = 30f;
 		public float UIScrollSpeed = 50f;
+		public float ZoomSpeed = 0.04f;
 		public int SelectionDeadzone = 24;
 		public int MouseScrollDeadzone = 8;
 
 		public bool UseClassicMouseStyle = false;
+		public bool UseAlternateScrollButton = false;
+
+		public bool HideReplayChat = false;
+
 		public StatusBarsType StatusBars = StatusBarsType.Standard;
+		public TargetLinesType TargetLines = TargetLinesType.Manual;
 		public bool UsePlayerStanceColors = false;
-		public bool DrawTargetLine = true;
 
 		public bool AllowDownloading = true;
 
 		[Desc("Filename of the authentication profile to use.")]
 		public string AuthProfile = "player.oraid";
 
-		public bool AllowZoom = true;
-		public Modifiers ZoomModifier = Modifiers.Ctrl;
+		public Modifiers ZoomModifier = Modifiers.None;
 
 		public bool FetchNews = true;
 
+		[Desc("Version of introduction prompt that the player last viewed.")]
+		public int IntroductionPromptVersion = 0;
+
 		public MPGameFilters MPGameFilters = MPGameFilters.Waiting | MPGameFilters.Empty | MPGameFilters.Protected | MPGameFilters.Started;
+
+		public bool PauseShellmap = false;
+
+		[Desc("Allow mods to enable the Discord service that can interact with a local Discord client.")]
+		public bool EnableDiscordService = true;
+
+		public TextNotificationPoolFilters TextNotificationPoolFilters = TextNotificationPoolFilters.Feedback | TextNotificationPoolFilters.Transients;
 	}
 
 	public class Settings
@@ -263,15 +328,14 @@ namespace OpenRA
 			var err2 = FieldLoader.InvalidValueAction;
 			try
 			{
-				FieldLoader.UnknownFieldAction = (s, f) => Console.WriteLine("Ignoring unknown field `{0}` on `{1}`".F(s, f.Name));
+				FieldLoader.UnknownFieldAction = (s, f) => Console.WriteLine($"Ignoring unknown field `{s}` on `{f.Name}`");
 
 				if (File.Exists(settingsFile))
 				{
 					yamlCache = MiniYaml.FromFile(settingsFile, false);
 					foreach (var yamlSection in yamlCache)
 					{
-						object settingsSection;
-						if (yamlSection.Key != null && Sections.TryGetValue(yamlSection.Key, out settingsSection))
+						if (yamlSection.Key != null && Sections.TryGetValue(yamlSection.Key, out var settingsSection))
 							LoadSectionYaml(yamlSection.Value, settingsSection);
 					}
 
@@ -358,11 +422,11 @@ namespace OpenRA
 			return clean;
 		}
 
-		public static string SanitizedServerName(string dirty)
+		public string SanitizedServerName(string dirty)
 		{
 			var clean = SanitizedName(dirty);
 			if (string.IsNullOrWhiteSpace(clean))
-				return new ServerSettings().Name;
+				return $"{SanitizedPlayerName(Player.Name)}'s Game";
 			else
 				return clean;
 		}
@@ -370,7 +434,7 @@ namespace OpenRA
 		public static string SanitizedPlayerName(string dirty)
 		{
 			var forbiddenNames = new string[] { "Open", "Closed" };
-			var botNames = OpenRA.Game.ModData.DefaultRules.Actors["player"].TraitInfos<IBotInfo>().Select(t => t.Name);
+			var botNames = OpenRA.Game.ModData.DefaultRules.Actors[SystemActors.Player].TraitInfos<IBotInfo>().Select(t => t.Name);
 
 			var clean = SanitizedName(dirty);
 
@@ -390,7 +454,7 @@ namespace OpenRA
 			FieldLoader.InvalidValueAction = (s, t, f) =>
 			{
 				var ret = defaults.GetType().GetField(f).GetValue(defaults);
-				Console.WriteLine("FieldLoader: Cannot parse `{0}` into `{2}:{1}`; substituting default `{3}`".F(s, t.Name, f, ret));
+				Console.WriteLine($"FieldLoader: Cannot parse `{s}` into `{f}:{t.Name}`; substituting default `{ret}`");
 				return ret;
 			};
 

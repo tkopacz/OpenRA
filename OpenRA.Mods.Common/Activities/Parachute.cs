@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,7 +11,6 @@
 
 using OpenRA.Activities;
 using OpenRA.Mods.Common.Traits;
-using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Activities
 {
@@ -19,14 +18,12 @@ namespace OpenRA.Mods.Common.Activities
 	{
 		readonly IPositionable pos;
 		readonly WVec fallVector;
-		readonly Actor ignore;
 
 		int groundLevel;
 
-		public Parachute(Actor self, Actor ignoreActor = null)
+		public Parachute(Actor self)
 		{
 			pos = self.TraitOrDefault<IPositionable>();
-			ignore = ignoreActor;
 
 			fallVector = new WVec(0, 0, self.Info.TraitInfo<ParachutableInfo>().FallRate);
 			IsInterruptible = false;
@@ -39,24 +36,24 @@ namespace OpenRA.Mods.Common.Activities
 				np.OnParachute(self);
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
 			var nextPosition = self.CenterPosition - fallVector;
 			if (nextPosition.Z < groundLevel)
-				return NextActivity;
+				return true;
 
-			pos.SetVisualPosition(self, nextPosition);
+			pos.SetCenterPosition(self, nextPosition);
 
-			return this;
+			return false;
 		}
 
 		protected override void OnLastRun(Actor self)
 		{
 			var centerPosition = self.CenterPosition;
-			pos.SetPosition(self, centerPosition - new WVec(0, 0, groundLevel - centerPosition.Z));
+			pos.SetPosition(self, centerPosition + new WVec(0, 0, groundLevel - centerPosition.Z));
 
 			foreach (var np in self.TraitsImplementing<INotifyParachute>())
-				np.OnLanded(self, ignore);
+				np.OnLanded(self);
 		}
 	}
 }

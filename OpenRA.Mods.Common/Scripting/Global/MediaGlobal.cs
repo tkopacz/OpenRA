@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -14,12 +14,11 @@ using System.IO;
 using Eluant;
 using OpenRA.Effects;
 using OpenRA.GameRules;
-using OpenRA.Graphics;
 using OpenRA.Mods.Common.Effects;
-using OpenRA.Mods.Common.FileFormats;
 using OpenRA.Mods.Common.Traits;
 using OpenRA.Primitives;
 using OpenRA.Scripting;
+using OpenRA.Video;
 
 namespace OpenRA.Mods.Common.Scripting
 {
@@ -171,17 +170,17 @@ namespace OpenRA.Mods.Common.Scripting
 			}
 			catch (FileNotFoundException e)
 			{
-				Log.Write("lua", "Couldn't play movie {0}! File doesn't exist.", e.FileName);
+				Log.Write("lua", $"Couldn't play movie {e.FileName}! File doesn't exist.");
 				onCompleteRadar();
 				return false;
 			}
 
-			AsyncLoader l = new AsyncLoader(Media.LoadVqa);
+			AsyncLoader l = new AsyncLoader(Media.LoadVideo);
 			IAsyncResult ar = l.BeginInvoke(s, null, null);
 			Action onLoadComplete = () =>
 			{
 				Media.StopFMVInRadar();
-				world.AddFrameEndTask(_ => Media.PlayFMVInRadar(world, l.EndInvoke(ar), onCompleteRadar));
+				world.AddFrameEndTask(_ => Media.PlayFMVInRadar(l.EndInvoke(ar), onCompleteRadar));
 			};
 
 			world.AddFrameEndTask(w => w.Add(new AsyncAction(ar, onLoadComplete)));
@@ -195,16 +194,19 @@ namespace OpenRA.Mods.Common.Scripting
 				return;
 
 			var c = color.HasValue ? color.Value : Color.White;
-			Game.AddChatLine(prefix, c, text);
+			TextNotificationsManager.AddMissionLine(prefix, text, c);
 		}
 
-		[Desc("Display a system message to the player.")]
-		public void DisplaySystemMessage(string text, string prefix = "Mission")
+		[Desc("Display a system message to the player. If 'prefix' is nil the default system prefix is used.")]
+		public void DisplaySystemMessage(string text, string prefix = null)
 		{
 			if (string.IsNullOrEmpty(text))
 				return;
 
-			Game.AddSystemLine(prefix, text);
+			if (string.IsNullOrEmpty(prefix))
+				TextNotificationsManager.AddSystemLine(text);
+			else
+				TextNotificationsManager.AddSystemLine(prefix, text);
 		}
 
 		[Desc("Displays a debug message to the player, if \"Show Map Debug Messages\" is checked in the settings.")]
@@ -213,7 +215,7 @@ namespace OpenRA.Mods.Common.Scripting
 			if (string.IsNullOrEmpty(text) || !Game.Settings.Debug.LuaDebug)
 				return;
 
-			Game.Debug(text);
+			TextNotificationsManager.Debug(text);
 		}
 
 		[Desc("Display a text message at the specified location.")]
@@ -226,6 +228,6 @@ namespace OpenRA.Mods.Common.Scripting
 			world.AddFrameEndTask(w => w.Add(new FloatingText(position, c, text, duration)));
 		}
 
-		public delegate VqaReader AsyncLoader(Stream s);
+		public delegate IVideo AsyncLoader(Stream s);
 	}
 }

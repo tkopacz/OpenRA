@@ -1,6 +1,6 @@
 World:
 	LuaScript:
-		Scripts: nod08b.lua, nod08b-AI.lua
+		Scripts: campaign.lua, utils.lua, nod08b.lua, nod08b-AI.lua
 	MusicPlaylist:
 		StartingMusic: linefire
 		VictoryMusic: nod_win1
@@ -97,11 +97,8 @@ E6:
 
 HARV:
 	Harvester:
-		SearchFromOrderRadius: 30
-
-MTNK:
-	Buildable:
-		Prerequisites: ~weap
+		SearchFromProcRadius: 30
+		SearchFromHarvesterRadius: 30
 
 HTNK:
 	Buildable:
@@ -168,7 +165,7 @@ BOAT:
 		Except: Attack
 	RevealsShroud:
 		Range: 4c0
-		ValidStances: Enemy, Neutral, Ally
+		ValidRelationships: Enemy, Neutral, Ally
 
 FACT.IN:
 	Inherits: FACT
@@ -187,12 +184,6 @@ FACTOUT.IN:
 		Prerequisite: fact
 	Capturable:
 		Types: building
-
-MoneyCrate:
-	Inherits: ^Crate
-	GiveCashCrateAction:
-		Amount: 2000
-		UseCashTick: yes
 
 NUKEOUT.IN:
 	Inherits: NUKE

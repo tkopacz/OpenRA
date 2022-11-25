@@ -6,10 +6,11 @@ World:
 	MissionData:
 		Briefing: The Soviets are currently developing a new weapon system at a secret research laboratory. This is a reconnaissance mission. Do not engage until we know what we are up against and wait for reinforcements. Our civilian contacts reported a heavily guarded installation under ruthless command.
 	LuaScript:
-		Scripts: infiltration.lua
+		Scripts: campaign.lua, utils.lua, infiltration.lua
 	ScriptLobbyDropdown@difficulty:
 		ID: difficulty
 		Label: Difficulty
+		Description: The difficulty of the mission
 		Values:
 			easy: Easy
 			normal: Normal
@@ -33,7 +34,7 @@ World:
 
 MISS:
 	Targetable:
-		TargetTypes: Ground, C4, DetonateAttack, Structure, MissionObjective, NoAutoTarget
+		TargetTypes: GroundActor, C4, DetonateAttack, Structure, MissionObjective, NoAutoTarget
 
 LST.Unselectable.UnloadOnly:
 	Inherits: LST
@@ -44,9 +45,8 @@ LST.Unselectable.UnloadOnly:
 		Prerequisites: ~disabled
 	Cargo:
 		MaxWeight: 0
-		PipCount: 0
 	Targetable:
-		TargetTypes: Ground, Water, Repair, NoAutoTarget
+		TargetTypes: GroundActor, Water, Repair, NoAutoTarget
 	Interactable:
 
 SPY.Strong:
@@ -80,6 +80,7 @@ DOG.Patrol:
 
 TRUK.Hijackable:
 	Inherits: TRUK
+	Inherits@CARGOPIPS: ^CargoPips
 	Buildable:
 		Prerequisites: ~disabled
 	Mobile:
@@ -87,11 +88,10 @@ TRUK.Hijackable:
 	Cargo:
 		Types: Infantry
 		MaxWeight: 5
-		PipCount: 5
 		PassengerConditions:
 			spy.strong: mobile
 	Targetable:
-		TargetTypes: Ground, Repair, Vehicle, NoAutoTarget
+		TargetTypes: GroundActor, Repair, Vehicle, NoAutoTarget
 	-Huntable:
 	Capturable:
 		Types: MissionObjective

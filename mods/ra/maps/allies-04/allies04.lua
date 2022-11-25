@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -57,13 +57,15 @@ ParadropLZs = { ParadropPoint1.CenterPosition, ParadropPoint2.CenterPosition, Pa
 Paradropped = 0
 Paradrop = function()
 	Trigger.AfterDelay(Utils.RandomInteger(ParadropDelay[1], ParadropDelay[2]), function()
-		local units = PowerProxy.SendParatroopers(Utils.Random(ParadropLZs))
-		Utils.Do(units, function(unit)
-			Trigger.OnAddedToWorld(unit, IdleHunt)
+		local aircraft = PowerProxy.TargetParatroopers(Utils.Random(ParadropLZs))
+		Utils.Do(aircraft, function(a)
+			Trigger.OnPassengerExited(a, function(t, p)
+				IdleHunt(p)
+			end)
 		end)
 
 		Paradropped = Paradropped + 1
-		if Paradropped <= ParadropWaves[Map.LobbyOption("difficulty")] then
+		if Paradropped <= ParadropWaves[Difficulty] then
 			Paradrop()
 		end
 	end)
@@ -112,7 +114,7 @@ SendConvoys = function()
 			Trigger.RemoveFootprintTrigger(id)
 
 			ConvoysSent = ConvoysSent + 1
-			if ConvoysSent <= Convoys[Map.LobbyOption("difficulty")] then
+			if ConvoysSent <= Convoys[Difficulty] then
 				SendConvoys()
 			else
 				player.MarkCompletedObjective(DestroyConvoys)
@@ -136,31 +138,9 @@ Tick = function()
 	end
 end
 
-InitObjectives = function()
-	Trigger.OnObjectiveAdded(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "New " .. string.lower(p.GetObjectiveType(id)) .. " objective")
-	end)
-
-	KillUSSR = player.AddPrimaryObjective("Destroy all Soviet units and buildings in this region.")
-	DestroyConvoys = player.AddSecondaryObjective("Eliminate all passing Soviet convoys.")
-
-	Trigger.OnObjectiveCompleted(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-	end)
-	Trigger.OnObjectiveFailed(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-	end)
-
-	Trigger.OnPlayerLost(player, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(player, "MissionFailed")
-		end)
-	end)
-	Trigger.OnPlayerWon(player, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(player, "MissionAccomplished")
-		end)
-	end)
+AddObjectives = function()
+	KillUSSR = player.AddObjective("Destroy all Soviet units and buildings in this region.")
+	DestroyConvoys = player.AddObjective("Eliminate all passing Soviet convoys.", "Secondary", false)
 end
 
 WorldLoaded = function()
@@ -169,11 +149,11 @@ WorldLoaded = function()
 
 	Camera.Position = AlliedConyard.CenterPosition
 
-	InitObjectives()
+	InitObjectives(player)
+	AddObjectives()
 
-	local difficulty = Map.LobbyOption("difficulty")
-	ConvoyDelay = ConvoyDelays[difficulty]
-	ParadropDelay = ParadropDelays[difficulty]
+	ConvoyDelay = ConvoyDelays[Difficulty]
+	ParadropDelay = ParadropDelays[Difficulty]
 	PowerProxy = Actor.Create("powerproxy.paratroopers", false, { Owner = ussr })
 	Paradrop()
 	SendConvoys()

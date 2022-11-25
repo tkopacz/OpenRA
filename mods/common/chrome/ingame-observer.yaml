@@ -1,6 +1,7 @@
 Container@OBSERVER_WIDGETS:
-	Logic: MenuButtonsChromeLogic
+	Logic: MenuButtonsChromeLogic, LoadIngameChatLogic
 	Children:
+		Container@CHAT_ROOT:
 		LogicKeyListener@OBSERVER_KEY_LISTENER:
 		MenuButton@OPTIONS_BUTTON:
 			X: 5
@@ -44,7 +45,7 @@ Container@OBSERVER_WIDGETS:
 					Width: PARENT_RIGHT - 19
 					Height: PARENT_BOTTOM - 19
 					WorldInteractionController: INTERACTION_CONTROLLER
-				VqaPlayer@PLAYER:
+				VideoPlayer@PLAYER:
 					X: 10
 					Y: 10
 					Width: PARENT_RIGHT - 20
@@ -74,7 +75,7 @@ Container@OBSERVER_WIDGETS:
 							Y: 2
 						Label@LABEL:
 							X: 34
-							Width: 60
+							Width: PARENT_RIGHT
 							Height: 25
 							Shadow: True
 						Label@NOFLAG_LABEL:
@@ -100,9 +101,8 @@ Container@OBSERVER_WIDGETS:
 							IgnoreChildMouseOver: true
 							Children:
 								Image@IMAGE_PAUSE:
-									Y: 1
-									Width: 25
-									Height: 25
+									X: 5
+									Y: 5
 									ImageCollection: music
 									ImageName: pause
 						Button@BUTTON_PLAY:
@@ -116,8 +116,8 @@ Container@OBSERVER_WIDGETS:
 							TooltipContainer: TOOLTIP_CONTAINER
 							Children:
 								Image@IMAGE_PLAY:
-									Width: 25
-									Height: 25
+									X: 5
+									Y: 5
 									ImageCollection: music
 									ImageName: play
 						Button@BUTTON_SLOW:
@@ -125,7 +125,6 @@ Container@OBSERVER_WIDGETS:
 							Y: 13
 							Width: 36
 							Height: 20
-							BaseLine: 1
 							Key: ReplaySpeedSlow
 							TooltipText: Slow speed
 							TooltipContainer: TOOLTIP_CONTAINER
@@ -136,7 +135,6 @@ Container@OBSERVER_WIDGETS:
 							Y: 13
 							Width: 38
 							Height: 20
-							BaseLine: 1
 							Key: ReplaySpeedRegular
 							TooltipText: Regular speed
 							TooltipContainer: TOOLTIP_CONTAINER
@@ -147,7 +145,6 @@ Container@OBSERVER_WIDGETS:
 							Y: 13
 							Width: 38
 							Height: 20
-							BaseLine: 1
 							Key: ReplaySpeedFast
 							TooltipText: Fast speed
 							TooltipContainer: TOOLTIP_CONTAINER
@@ -158,7 +155,6 @@ Container@OBSERVER_WIDGETS:
 							Y: 13
 							Width: 38
 							Height: 20
-							BaseLine: 1
 							Key: ReplaySpeedMax
 							TooltipText: Maximum speed
 							TooltipContainer: TOOLTIP_CONTAINER
@@ -172,11 +168,12 @@ Container@OBSERVER_WIDGETS:
 				StatisticsProductionKey: StatisticsProduction
 				StatisticsSupportPowersKey: StatisticsSupportPowers
 				StatisticsCombatKey: StatisticsCombat
+				StatisticsArmyKey: StatisticsArmy
 				StatisticsGraphKey: StatisticsGraph
 				StatisticsArmyGraphKey: StatisticsArmyGraph
 			X: 5
 			Y: 5
-			Width: 765
+			Width: 760
 			Height: 250
 			Children:
 				DropDownButton@STATS_DROPDOWN:
@@ -196,7 +193,7 @@ Container@OBSERVER_WIDGETS:
 						Container@BASIC_STATS_HEADERS:
 							X: 0
 							Y: 0
-							Width: 760
+							Width: 700
 							Height: PARENT_BOTTOM
 							Children:
 								ColorBlock@HEADER_COLOR:
@@ -230,17 +227,8 @@ Container@OBSERVER_WIDGETS:
 									Text: Cash
 									Align: Right
 									Shadow: True
-								Label@EARNED_MIN_HEADER:
-									X: 235
-									Y: 0
-									Width: 60
-									Height: PARENT_BOTTOM
-									Font: Bold
-									Text: $/min
-									Align: Right
-									Shadow: True
 								Label@POWER_HEADER:
-									X: 295
+									X: 235
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
@@ -249,7 +237,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Center
 									Shadow: True
 								Label@KILLS_HEADER:
-									X: 375
+									X: 315
 									Y: 0
 									Width: 40
 									Height: PARENT_BOTTOM
@@ -258,7 +246,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@DEATHS_HEADER:
-									X: 415
+									X: 355
 									Y: 0
 									Width: 60
 									Height: PARENT_BOTTOM
@@ -267,7 +255,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@ASSETS_DESTROYED_HEADER:
-									X: 475
+									X: 415
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
@@ -276,7 +264,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@ASSETS_LOST_HEADER:
-									X: 555
+									X: 495
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
@@ -285,7 +273,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@EXPERIENCE_HEADER:
-									X: 635
+									X: 575
 									Y: 0
 									Width: 60
 									Height: PARENT_BOTTOM
@@ -294,7 +282,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@ACTIONS_MIN_HEADER:
-									X: 695
+									X: 635
 									Y: 0
 									Width: 60
 									Height: PARENT_BOTTOM
@@ -305,7 +293,7 @@ Container@OBSERVER_WIDGETS:
 						Container@ECONOMY_STATS_HEADERS:
 							X: 0
 							Y: 0
-							Width: 740
+							Width: 640
 							Height: PARENT_BOTTOM
 							Children:
 								ColorBlock@HEADER_COLOR:
@@ -336,24 +324,16 @@ Container@OBSERVER_WIDGETS:
 									Text: Cash
 									Align: Right
 									Shadow: True
-								Label@EARNED_MIN_HEADER:
+								Label@INCOME_HEADER:
 									X: 235
-									Width: 60
+									Width: 80
 									Height: PARENT_BOTTOM
 									Font: Bold
-									Text: $/min
-									Align: Right
-									Shadow: True
-								Label@EARNED_THIS_MIN_HEADER:
-									X: 295
-									Width: 120
-									Height: PARENT_BOTTOM
-									Font: Bold
-									Text: Earned this min
+									Text: Income
 									Align: Right
 									Shadow: True
 								Label@ASSETS_HEADER:
-									X: 415
+									X: 315
 									Width: 80
 									Height: PARENT_BOTTOM
 									Font: Bold
@@ -361,7 +341,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@EARNED_HEADER:
-									X: 495
+									X: 395
 									Width: 80
 									Height: PARENT_BOTTOM
 									Font: Bold
@@ -369,7 +349,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@SPENT_HEADER:
-									X: 575
+									X: 475
 									Width: 80
 									Height: PARENT_BOTTOM
 									Font: Bold
@@ -377,7 +357,7 @@ Container@OBSERVER_WIDGETS:
 									Align: Right
 									Shadow: True
 								Label@HARVESTERS_HEADER:
-									X: 655
+									X: 555
 									Width: 80
 									Height: PARENT_BOTTOM
 									Font: Bold
@@ -456,10 +436,46 @@ Container@OBSERVER_WIDGETS:
 									Font: Bold
 									Text: Support Powers
 									Shadow: True
+						Container@ARMY_HEADERS:
+							X: 0
+							Y: 0
+							Width: 400
+							Height: PARENT_BOTTOM
+							Children:
+								ColorBlock@HEADER_COLOR:
+									X: 0
+									Y: 0
+									Color: 00000090
+									Width: PARENT_RIGHT - 200
+									Height: PARENT_BOTTOM
+								GradientColorBlock@HEADER_GRADIENT:
+									X: PARENT_RIGHT - 200
+									Y: 0
+									TopLeftColor: 00000090
+									BottomLeftColor: 00000090
+									Width: 200
+									Height: PARENT_BOTTOM
+								Label@PLAYER_HEADER:
+									X: 40
+									Y: 0
+									Width: 120
+									Height: PARENT_BOTTOM
+									Font: Bold
+									Text: Player
+									Align: Left
+									Shadow: True
+								Label@ARMY_HEADER:
+									X: 160
+									Y: 0
+									Width: 100
+									Height: PARENT_BOTTOM
+									Font: Bold
+									Text: Army
+									Shadow: True
 						Container@COMBAT_STATS_HEADERS:
 							X: 0
 							Y: 0
-							Width: 770
+							Width: 760
 							Height: PARENT_BOTTOM
 							Children:
 								ColorBlock@HEADER_COLOR:
@@ -487,121 +503,74 @@ Container@OBSERVER_WIDGETS:
 								Label@ASSETS_DESTROYED_HEADER:
 									X: 155
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Font: Bold
 									Text: Destroyed
 									Align: Right
 									Shadow: True
 								Label@ASSETS_LOST_HEADER:
-									X: 235
+									X: 230
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Font: Bold
 									Text: Lost
 									Align: Right
 									Shadow: True
 								Label@UNITS_KILLED_HEADER:
-									X: 315
+									X: 310
 									Y: 0
-									Width: 100
+									Width: 75
 									Height: PARENT_BOTTOM
 									Font: Bold
-									Text: Units Killed
+									Text: U. Killed
 									Align: Right
 									Shadow: True
 								Label@UNITS_DEAD_HEADER:
-									X: 415
+									X: 385
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Font: Bold
-									Text: Units Lost
+									Text: U. Lost
 									Align: Right
 									Shadow: True
 								Label@BUILDINGS_KILLED_HEADER:
-									X: 495
+									X: 460
 									Y: 0
-									Width: 90
+									Width: 75
 									Height: PARENT_BOTTOM
 									Font: Bold
-									Text: Bldg Killed
+									Text: B. Killed
 									Align: Right
 									Shadow: True
 								Label@BUILDINGS_DEAD_HEADER:
-									X: 585
+									X: 535
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Font: Bold
-									Text: Bldg Lost
+									Text: B. Lost
 									Align: Right
 									Shadow: True
 								Label@ARMY_VALUE_HEADER:
-									X: 665
+									X: 610
 									Y: 0
-									Width: 100
+									Width: 90
 									Height: PARENT_BOTTOM
 									Font: Bold
 									Text: Army Value
 									Align: Right
 									Shadow: True
-						Container@EARNED_THIS_MIN_GRAPH_HEADERS:
-							X: 0
-							Y: 0
-							Width: PARENT_RIGHT - 25
-							Height: PARENT_BOTTOM
-							Children:
-								ColorBlock@HEADER_COLOR:
-									X: 0
+								Label@VISION_HEADER:
+									X: 700
 									Y: 0
-									Color: 00000090
-									Width: PARENT_RIGHT - 200
-									Height: PARENT_BOTTOM
-								GradientColorBlock@HEADER_GRADIENT:
-									X: PARENT_RIGHT - 200
-									Y: 0
-									TopLeftColor: 00000090
-									BottomLeftColor: 00000090
-									Width: 200
-									Height: PARENT_BOTTOM
-								Label@EARNED_THIS_MIN_HEADER:
-									X: 0
-									Y: 0
-									Width: PARENT_RIGHT
+									Width: 60
 									Height: PARENT_BOTTOM
 									Font: Bold
-									Text: Earnings received each minute
-									Align: Center
-									Shadow: True
-						Container@ARMY_THIS_MIN_GRAPH_HEADERS:
-							X: 0
-							Y: 0
-							Width: PARENT_RIGHT - 25
-							Height: PARENT_BOTTOM
-							Children:
-								ColorBlock@HEADER_COLOR:
-									X: 0
-									Y: 0
-									Color: 00000090
-									Width: PARENT_RIGHT - 200
-									Height: PARENT_BOTTOM
-								GradientColorBlock@HEADER_GRADIENT:
-									X: PARENT_RIGHT - 200
-									Y: 0
-									TopLeftColor: 00000090
-									BottomLeftColor: 00000090
-									Width: 200
-									Height: PARENT_BOTTOM
-								Label@EARNED_THIS_MIN_HEADER:
-									X: 0
-									Y: 0
-									Width: PARENT_RIGHT
-									Height: PARENT_BOTTOM
-									Font: Bold
-									Text: Army value over time
-									Align: Center
+									Text: Vision
+									Align: Right
 									Shadow: True
 				ScrollPanel@PLAYER_STATS_PANEL:
 					X: 0
@@ -643,9 +612,9 @@ Container@OBSERVER_WIDGETS:
 						ScrollItem@BASIC_PLAYER_TEMPLATE:
 							X: 0
 							Y: 0
-							Width: 760
+							Width: 700
 							Height: 25
-							BaseName: scrollitem-nohover
+							Background: scrollitem-nohover
 							Children:
 								ColorBlock@PLAYER_COLOR:
 									X: 0
@@ -656,7 +625,7 @@ Container@OBSERVER_WIDGETS:
 									X: PARENT_RIGHT - 200
 									Y: 0
 									Width: 200
-									Height: PARENT_BOTTOM 
+									Height: PARENT_BOTTOM
 								Image@FLAG:
 									X: 2
 									Y: 2
@@ -676,57 +645,50 @@ Container@OBSERVER_WIDGETS:
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
-								Label@EARNED_MIN:
-									X: 235
-									Y: 0
-									Width: 60
-									Height: PARENT_BOTTOM
-									Align: Right
-									Shadow: True
 								Label@POWER:
-									X: 295
+									X: 235
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Center
 									Shadow: True
 								Label@KILLS:
-									X: 375
+									X: 315
 									Y: 0
 									Width: 40
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@DEATHS:
-									X: 415
+									X: 355
 									Y: 0
 									Width: 60
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@ASSETS_DESTROYED:
-									X: 475
+									X: 415
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@ASSETS_LOST:
-									X: 555
+									X: 495
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@EXPERIENCE:
-									X: 635
+									X: 575
 									Y: 0
 									Width: 60
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@ACTIONS_MIN:
-									X: 695
+									X: 635
 									Y: 0
 									Width: 60
 									Height: PARENT_BOTTOM
@@ -735,9 +697,9 @@ Container@OBSERVER_WIDGETS:
 						ScrollItem@ECONOMY_PLAYER_TEMPLATE:
 							X: 0
 							Y: 0
-							Width: 740
+							Width: 640
 							Height: 25
-							BaseName: scrollitem-nohover
+							Background: scrollitem-nohover
 							Children:
 								ColorBlock@PLAYER_COLOR:
 									X: 0
@@ -748,7 +710,7 @@ Container@OBSERVER_WIDGETS:
 									X: PARENT_RIGHT - 200
 									Y: 0
 									Width: 200
-									Height: PARENT_BOTTOM 
+									Height: PARENT_BOTTOM
 								Image@FLAG:
 									X: 2
 									Y: 2
@@ -768,43 +730,36 @@ Container@OBSERVER_WIDGETS:
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
-								Label@EARNED_MIN:
+								Label@INCOME:
 									X: 235
 									Y: 0
-									Width: 60
-									Height: PARENT_BOTTOM
-									Align: Right
-									Shadow: True
-								Label@EARNED_THIS_MIN:
-									X: 295
-									Y: 0
-									Width: 120
+									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@ASSETS:
-									X: 415
+									X: 315
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@EARNED:
-									X: 495
+									X: 395
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@SPENT:
-									X: 575
+									X: 475
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@HARVESTERS:
-									X: 655
+									X: 555
 									Y: 0
 									Width: 80
 									Height: PARENT_BOTTOM
@@ -815,7 +770,7 @@ Container@OBSERVER_WIDGETS:
 							Y: 0
 							Width: 400
 							Height: 25
-							BaseName: scrollitem-nohover
+							Background: scrollitem-nohover
 							Children:
 								ColorBlock@PLAYER_COLOR:
 									X: 0
@@ -826,7 +781,7 @@ Container@OBSERVER_WIDGETS:
 									X: PARENT_RIGHT - 200
 									Y: 0
 									Width: 200
-									Height: PARENT_BOTTOM 
+									Height: PARENT_BOTTOM
 								Image@FLAG:
 									X: 2
 									Y: 2
@@ -850,7 +805,7 @@ Container@OBSERVER_WIDGETS:
 							Y: 0
 							Width: 400
 							Height: 25
-							BaseName: scrollitem-nohover
+							Background: scrollitem-nohover
 							Children:
 								ColorBlock@PLAYER_COLOR:
 									X: 0
@@ -861,7 +816,7 @@ Container@OBSERVER_WIDGETS:
 									X: PARENT_RIGHT - 200
 									Y: 0
 									Width: 200
-									Height: PARENT_BOTTOM 
+									Height: PARENT_BOTTOM
 								Image@FLAG:
 									X: 2
 									Y: 2
@@ -880,12 +835,12 @@ Container@OBSERVER_WIDGETS:
 									Width: 0
 									Height: PARENT_BOTTOM
 									TooltipContainer: TOOLTIP_CONTAINER
-						ScrollItem@COMBAT_PLAYER_TEMPLATE:
+						ScrollItem@ARMY_PLAYER_TEMPLATE:
 							X: 0
 							Y: 0
-							Width: 770
+							Width: 400
 							Height: 25
-							BaseName: scrollitem-nohover
+							Background: scrollitem-nohover
 							Children:
 								ColorBlock@PLAYER_COLOR:
 									X: 0
@@ -896,7 +851,44 @@ Container@OBSERVER_WIDGETS:
 									X: PARENT_RIGHT - 200
 									Y: 0
 									Width: 200
-									Height: PARENT_BOTTOM 
+									Height: PARENT_BOTTOM
+								Image@FLAG:
+									X: 5
+									Y: 4
+									Width: 35
+									Height: PARENT_BOTTOM - 4
+									ImageName: random
+									ImageCollection: flags
+								Label@PLAYER:
+									X: 35
+									Y: 0
+									Width: 120
+									Height: PARENT_BOTTOM
+									Font: Bold
+									Shadow: True
+								ObserverArmyIcons@ARMY_ICONS:
+									X: 155
+									Y: 0
+									Width: 0
+									Height: PARENT_BOTTOM
+									TooltipContainer: TOOLTIP_CONTAINER
+						ScrollItem@COMBAT_PLAYER_TEMPLATE:
+							X: 0
+							Y: 0
+							Width: 760
+							Height: 25
+							Background: scrollitem-nohover
+							Children:
+								ColorBlock@PLAYER_COLOR:
+									X: 0
+									Y: 0
+									Width: PARENT_RIGHT - 200
+									Height: PARENT_BOTTOM
+								GradientColorBlock@PLAYER_GRADIENT:
+									X: PARENT_RIGHT - 200
+									Y: 0
+									Width: 200
+									Height: PARENT_BOTTOM
 								Image@FLAG:
 									X: 2
 									Y: 2
@@ -912,57 +904,64 @@ Container@OBSERVER_WIDGETS:
 								Label@ASSETS_DESTROYED:
 									X: 155
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@ASSETS_LOST:
-									X: 235
+									X: 230
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@UNITS_KILLED:
-									X: 315
+									X: 310
 									Y: 0
-									Width: 100
+									Width: 75
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@UNITS_DEAD:
-									X: 415
+									X: 385
 									Y: 0
-									Width: 80
+									Width: 75
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
 								Label@BUILDINGS_KILLED:
-									X: 495
+									X: 460
+									Y: 0
+									Width: 75
+									Height: PARENT_BOTTOM
+									Align: Right
+									Shadow: True
+								Label@BUILDINGS_DEAD:
+									X: 535
+									Y: 0
+									Width: 75
+									Height: PARENT_BOTTOM
+									Align: Right
+									Shadow: True
+								Label@ARMY_VALUE:
+									X: 610
 									Y: 0
 									Width: 90
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
-								Label@BUILDINGS_DEAD:
-									X: 585
+								Label@VISION:
+									X: 700
 									Y: 0
-									Width: 80
+									Width: 60
 									Height: PARENT_BOTTOM
 									Align: Right
 									Shadow: True
-								Label@ARMY_VALUE:
-									X: 665
-									Y: 0
-									Width: 100
-									Height: PARENT_BOTTOM
-									Align: Right
-									Shadow: True
-				Container@EARNED_THIS_MIN_GRAPH_CONTAINER:
+				Container@INCOME_GRAPH_CONTAINER:
 					X: 0
-					Y: 54
-					Width: PARENT_RIGHT - 25
-					Height: PARENT_BOTTOM - 65
+					Y: 30
+					Width: PARENT_RIGHT
+					Height: PARENT_BOTTOM
 					Visible: False
 					Children:
 						ColorBlock@GRAPH_BACKGROUND:
@@ -971,25 +970,24 @@ Container@OBSERVER_WIDGETS:
 							Width: PARENT_RIGHT
 							Height: PARENT_BOTTOM
 							Color: 00000090
-						LineGraph@EARNED_THIS_MIN_GRAPH:
+						LineGraph@INCOME_GRAPH:
 							X: 0
 							Y: 0
-							Width: PARENT_RIGHT
+							Width: PARENT_RIGHT - 5
 							Height: PARENT_BOTTOM
 							ValueFormat: ${0}
-							XAxisValueFormat: {0}
 							YAxisValueFormat: ${0:F0}
-							XAxisSize: 20
-							YAxisSize: 10
-							XAxisLabel: m
-							YAxisLabel: $
+							XAxisSize: 40
+							XAxisTicksPerLabel: 2
+							XAxisLabel: Game Minute
+							YAxisLabel: Earnings
 							LabelFont: TinyBold
-							AxisFont: Bold
-				Container@ARMY_THIS_MIN_GRAPH_CONTAINER:
+							AxisFont: TinyBold
+				Container@ARMY_VALUE_GRAPH_CONTAINER:
 					X: 0
-					Y: 54
-					Width: PARENT_RIGHT - 25
-					Height: PARENT_BOTTOM - 65
+					Y: 30
+					Width: PARENT_RIGHT
+					Height: PARENT_BOTTOM
 					Visible: False
 					Children:
 						ColorBlock@GRAPH_BACKGROUND:
@@ -998,17 +996,16 @@ Container@OBSERVER_WIDGETS:
 							Width: PARENT_RIGHT
 							Height: PARENT_BOTTOM
 							Color: 00000090
-						LineGraph@ARMY_THIS_MIN_GRAPH:
+						LineGraph@ARMY_VALUE_GRAPH:
 							X: 0
 							Y: 0
-							Width: PARENT_RIGHT
+							Width: PARENT_RIGHT - 5
 							Height: PARENT_BOTTOM
 							ValueFormat: ${0}
-							XAxisValueFormat: {0}
 							YAxisValueFormat: ${0:F0}
-							XAxisSize: 20
-							YAxisSize: 10
-							XAxisLabel: m
-							YAxisLabel: $
+							XAxisSize: 40
+							XAxisTicksPerLabel: 2
+							XAxisLabel: Game Minute
+							YAxisLabel: Army Value
 							LabelFont: TinyBold
-							AxisFont: Bold
+							AxisFont: TinyBold

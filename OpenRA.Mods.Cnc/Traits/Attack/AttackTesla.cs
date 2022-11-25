@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,9 +9,11 @@
  */
 #endregion
 
+using System.Collections.Generic;
 using OpenRA.Activities;
 using OpenRA.Mods.Common.Activities;
 using OpenRA.Mods.Common.Traits;
+using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Cnc.Traits
@@ -60,7 +62,7 @@ namespace OpenRA.Mods.Cnc.Traits
 				charges = info.MaxCharges;
 		}
 
-		protected override bool CanAttack(Actor self, Target target)
+		protected override bool CanAttack(Actor self, in Target target)
 		{
 			if (!IsReachableTarget(target, true))
 				return false;
@@ -68,17 +70,17 @@ namespace OpenRA.Mods.Cnc.Traits
 			return base.CanAttack(self, target);
 		}
 
-		void INotifyAttack.Attacking(Actor self, Target target, Armament a, Barrel barrel)
+		void INotifyAttack.Attacking(Actor self, in Target target, Armament a, Barrel barrel)
 		{
 			--charges;
 			timeToRecharge = info.ReloadDelay;
 		}
 
-		void INotifyAttack.PreparingAttack(Actor self, Target target, Armament a, Barrel barrel) { }
+		void INotifyAttack.PreparingAttack(Actor self, in Target target, Armament a, Barrel barrel) { }
 
-		public override Activity GetAttackActivity(Actor self, Target newTarget, bool allowMove, bool forceAttack)
+		public override Activity GetAttackActivity(Actor self, AttackSource source, in Target newTarget, bool allowMove, bool forceAttack, Color? targetLineColor = null)
 		{
-			return new ChargeAttack(this, newTarget, forceAttack);
+			return new ChargeAttack(this, newTarget, forceAttack, targetLineColor);
 		}
 
 		class ChargeAttack : Activity, IActivityNotifyStanceChanged
@@ -86,28 +88,23 @@ namespace OpenRA.Mods.Cnc.Traits
 			readonly AttackTesla attack;
 			readonly Target target;
 			readonly bool forceAttack;
+			readonly Color? targetLineColor;
 
-			public ChargeAttack(AttackTesla attack, Target target, bool forceAttack)
+			public ChargeAttack(AttackTesla attack, in Target target, bool forceAttack, Color? targetLineColor = null)
 			{
 				this.attack = attack;
 				this.target = target;
 				this.forceAttack = forceAttack;
+				this.targetLineColor = targetLineColor;
 			}
 
-			public override Activity Tick(Actor self)
+			public override bool Tick(Actor self)
 			{
-				if (ChildActivity != null)
-				{
-					ChildActivity = ActivityUtils.RunActivity(self, ChildActivity);
-					if (ChildActivity != null)
-						return this;
-				}
-
 				if (IsCanceling || !attack.CanAttack(self, target))
-					return NextActivity;
+					return true;
 
 				if (attack.charges == 0)
-					return this;
+					return false;
 
 				foreach (var notify in self.TraitsImplementing<INotifyTeslaCharging>())
 					notify.Charging(self, target);
@@ -115,9 +112,9 @@ namespace OpenRA.Mods.Cnc.Traits
 				if (!string.IsNullOrEmpty(attack.info.ChargeAudio))
 					Game.Sound.Play(SoundType.World, attack.info.ChargeAudio, self.CenterPosition);
 
-				QueueChild(self, new Wait(attack.info.InitialChargeDelay), true);
-				QueueChild(self, new ChargeFire(attack, target));
-				return this;
+				QueueChild(new Wait(attack.info.InitialChargeDelay));
+				QueueChild(new ChargeFire(attack, target));
+				return false;
 			}
 
 			void IActivityNotifyStanceChanged.StanceChanged(Actor self, AutoTarget autoTarget, UnitStance oldStance, UnitStance newStance)
@@ -139,6 +136,12 @@ namespace OpenRA.Mods.Cnc.Traits
 						Cancel(self, true);
 				}
 			}
+
+			public override IEnumerable<TargetLineNode> TargetLineNodes(Actor self)
+			{
+				if (targetLineColor != null)
+					yield return new TargetLineNode(target, targetLineColor.Value);
+			}
 		}
 
 		class ChargeFire : Activity
@@ -146,31 +149,24 @@ namespace OpenRA.Mods.Cnc.Traits
 			readonly AttackTesla attack;
 			readonly Target target;
 
-			public ChargeFire(AttackTesla attack, Target target)
+			public ChargeFire(AttackTesla attack, in Target target)
 			{
 				this.attack = attack;
 				this.target = target;
 			}
 
-			public override Activity Tick(Actor self)
+			public override bool Tick(Actor self)
 			{
-				if (ChildActivity != null)
-				{
-					ChildActivity = ActivityUtils.RunActivity(self, ChildActivity);
-					if (ChildActivity != null)
-						return this;
-				}
-
 				if (IsCanceling || !attack.CanAttack(self, target))
-					return NextActivity;
+					return true;
 
 				if (attack.charges == 0)
-					return NextActivity;
+					return true;
 
 				attack.DoAttack(self, target);
 
-				QueueChild(self, new Wait(attack.info.ChargeDelay), true);
-				return this;
+				QueueChild(new Wait(attack.info.ChargeDelay));
+				return false;
 			}
 		}
 	}

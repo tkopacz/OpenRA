@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -16,7 +16,7 @@ using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
-	public class PluggableInfo : ITraitInfo
+	public class PluggableInfo : TraitInfo, IEditorActorOptions
 	{
 		[Desc("Footprint cell offset where a plug can be placed.")]
 		public readonly CVec Offset = CVec.Zero;
@@ -32,8 +32,19 @@ namespace OpenRA.Mods.Common.Traits
 			"Value is the condition expression defining the requirements to place the plug.")]
 		public readonly Dictionary<string, BooleanExpression> Requirements = new Dictionary<string, BooleanExpression>();
 
+		[Desc("Options to display in the map editor.",
+			"Key is the plug type that the requirements applies to.",
+			"Value is the label that is displayed in the actor editor dropdown.")]
+		public readonly Dictionary<string, string> EditorOptions = new Dictionary<string, string>();
+
+		[Desc("Label to use for an empty plug socket.")]
+		public readonly string EmptyOption = "Empty";
+
+		[Desc("Display order for the dropdown in the map editor")]
+		public readonly int EditorDisplayOrder = 5;
+
 		[GrantedConditionReference]
-		public IEnumerable<string> LinterConditions { get { return Conditions.Values; } }
+		public IEnumerable<string> LinterConditions => Conditions.Values;
 
 		[ConsumedConditionReference]
 		public IEnumerable<string> ConsumedConditions
@@ -41,7 +52,29 @@ namespace OpenRA.Mods.Common.Traits
 			get { return Requirements.Values.SelectMany(r => r.Variables).Distinct(); }
 		}
 
-		public object Create(ActorInitializer init) { return new Pluggable(init, this); }
+		IEnumerable<EditorActorOption> IEditorActorOptions.ActorOptions(ActorInfo ai, World world)
+		{
+			if (EditorOptions.Count == 0)
+				yield break;
+
+			// Make sure the no-plug option is always available
+			EditorOptions[""] = EmptyOption;
+			yield return new EditorActorDropdown("Plug", EditorDisplayOrder, EditorOptions,
+				actor =>
+				{
+					var init = actor.GetInitOrDefault<PlugInit>(this);
+					return init?.Value ?? "";
+				},
+				(actor, value) =>
+				{
+					if (string.IsNullOrEmpty(value))
+						actor.RemoveInit<PlugInit>(this);
+					else
+						actor.ReplaceInit(new PlugInit(this, value), this);
+				});
+		}
+
+		public override object Create(ActorInitializer init) { return new Pluggable(init, this); }
 	}
 
 	public class Pluggable : IObservesVariables, INotifyCreated
@@ -49,9 +82,8 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly PluggableInfo Info;
 
 		readonly string initialPlug;
-		ConditionManager conditionManager;
-		int conditionToken = ConditionManager.InvalidConditionToken;
-		Dictionary<string, bool> plugTypesAvailability = null;
+		int conditionToken = Actor.InvalidConditionToken;
+		readonly Dictionary<string, bool> plugTypesAvailability = null;
 
 		string active;
 
@@ -59,9 +91,7 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			Info = info;
 
-			var plugInit = init.Contains<PlugsInit>() ? init.Get<PlugsInit, Dictionary<CVec, string>>() : new Dictionary<CVec, string>();
-			if (plugInit.ContainsKey(Info.Offset))
-				initialPlug = plugInit[Info.Offset];
+			initialPlug = init.GetValue<PlugInit, string>(info, null);
 
 			if (info.Requirements.Count > 0)
 			{
@@ -73,13 +103,11 @@ namespace OpenRA.Mods.Common.Traits
 
 		void INotifyCreated.Created(Actor self)
 		{
-			conditionManager = self.TraitOrDefault<ConditionManager>();
-
 			if (!string.IsNullOrEmpty(initialPlug))
 				EnablePlug(self, initialPlug);
 		}
 
-		public bool AcceptsPlug(Actor self, string type)
+		public bool AcceptsPlug(string type)
 		{
 			if (!Info.Conditions.ContainsKey(type))
 				return false;
@@ -92,14 +120,13 @@ namespace OpenRA.Mods.Common.Traits
 
 		public void EnablePlug(Actor self, string type)
 		{
-			string condition;
-			if (!Info.Conditions.TryGetValue(type, out condition))
+			if (!Info.Conditions.TryGetValue(type, out var condition))
 				return;
 
-			if (conditionToken != ConditionManager.InvalidConditionToken)
-				conditionManager.RevokeCondition(self, conditionToken);
+			if (conditionToken != Actor.InvalidConditionToken)
+				self.RevokeCondition(conditionToken);
 
-			conditionToken = conditionManager.GrantCondition(self, condition);
+			conditionToken = self.GrantCondition(condition);
 			active = type;
 		}
 
@@ -108,8 +135,8 @@ namespace OpenRA.Mods.Common.Traits
 			if (type != active)
 				return;
 
-			if (conditionToken != ConditionManager.InvalidConditionToken)
-				conditionToken = conditionManager.RevokeCondition(self, conditionToken);
+			if (conditionToken != Actor.InvalidConditionToken)
+				conditionToken = self.RevokeCondition(conditionToken);
 
 			active = null;
 		}
@@ -123,12 +150,9 @@ namespace OpenRA.Mods.Common.Traits
 		}
 	}
 
-	public class PlugsInit : IActorInit<Dictionary<CVec, string>>
+	public class PlugInit : ValueActorInit<string>
 	{
-		[DictionaryFromYamlKey]
-		readonly Dictionary<CVec, string> value = new Dictionary<CVec, string>();
-		public PlugsInit() { }
-		public PlugsInit(Dictionary<CVec, string> init) { value = init; }
-		public Dictionary<CVec, string> Value(World world) { return value; }
+		public PlugInit(TraitInfo info, string value)
+			: base(info, value) { }
 	}
 }

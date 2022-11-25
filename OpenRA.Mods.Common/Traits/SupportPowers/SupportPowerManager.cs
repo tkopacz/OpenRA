@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -18,10 +18,11 @@ using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
+	[TraitLocation(SystemActors.Player)]
 	[Desc("Attach this to the player actor.")]
-	public class SupportPowerManagerInfo : ITraitInfo, Requires<DeveloperModeInfo>, Requires<TechTreeInfo>
+	public class SupportPowerManagerInfo : TraitInfo, Requires<DeveloperModeInfo>, Requires<TechTreeInfo>
 	{
-		public object Create(ActorInitializer init) { return new SupportPowerManager(init); }
+		public override object Create(ActorInitializer init) { return new SupportPowerManager(init); }
 	}
 
 	public class SupportPowerManager : ITick, IResolveOrder, ITechTreeElement
@@ -60,14 +61,9 @@ namespace OpenRA.Mods.Common.Traits
 
 				if (!Powers.ContainsKey(key))
 				{
-					Powers.Add(key, new SupportPowerInstance(key, this)
-					{
-						Instances = new List<SupportPower>(),
-						RemainingTime = t.Info.StartFullyCharged ? 0 : t.Info.ChargeInterval,
-						TotalTime = t.Info.ChargeInterval,
-					});
+					Powers.Add(key, t.CreateInstance(key, this));
 
-					if (t.Info.Prerequisites.Any())
+					if (t.Info.Prerequisites.Length > 0)
 					{
 						TechTree.Add(key, t.Info.Prerequisites, 0, this);
 						TechTree.Update();
@@ -110,18 +106,11 @@ namespace OpenRA.Mods.Common.Traits
 				Powers[order.OrderString].Activate(order);
 		}
 
-		// Deprecated. Remove after SupportPowerBinWidget is removed.
-		public void Target(string key)
-		{
-			if (Powers.ContainsKey(key))
-				Powers[key].Target();
-		}
-
-		static readonly SupportPowerInstance[] NoInstances = { };
+		static readonly SupportPowerInstance[] NoInstances = Array.Empty<SupportPowerInstance>();
 
 		public IEnumerable<SupportPowerInstance> GetPowersForActor(Actor a)
 		{
-			if (a.Owner != Self.Owner || !a.Info.HasTraitInfo<SupportPowerInfo>())
+			if (Powers.Count == 0 || a.Owner != Self.Owner || !a.Info.HasTraitInfo<SupportPowerInfo>())
 				return NoInstances;
 
 			return a.TraitsImplementing<SupportPower>()
@@ -131,8 +120,7 @@ namespace OpenRA.Mods.Common.Traits
 
 		public void PrerequisitesAvailable(string key)
 		{
-			SupportPowerInstance sp;
-			if (!Powers.TryGetValue(key, out sp))
+			if (!Powers.TryGetValue(key, out var sp))
 				return;
 
 			sp.PrerequisitesAvailable(true);
@@ -140,12 +128,10 @@ namespace OpenRA.Mods.Common.Traits
 
 		public void PrerequisitesUnavailable(string key)
 		{
-			SupportPowerInstance sp;
-			if (!Powers.TryGetValue(key, out sp))
+			if (!Powers.TryGetValue(key, out var sp))
 				return;
 
 			sp.PrerequisitesAvailable(false);
-			sp.RemainingTime = sp.TotalTime;
 		}
 
 		public void PrerequisitesItemHidden(string key) { }
@@ -154,82 +140,103 @@ namespace OpenRA.Mods.Common.Traits
 
 	public class SupportPowerInstance
 	{
-		readonly SupportPowerManager manager;
+		protected readonly SupportPowerManager Manager;
 
 		public readonly string Key;
 
-		public List<SupportPower> Instances;
-		public int RemainingTime;
-		public int TotalTime;
+		public readonly List<SupportPower> Instances = new List<SupportPower>();
+		public readonly int TotalTicks;
+
+		protected int remainingSubTicks;
+		public int RemainingTicks => remainingSubTicks / 100;
 		public bool Active { get; private set; }
-		public bool Disabled { get { return (!prereqsAvailable && !manager.DevMode.AllTech) || !instancesEnabled || oneShotFired; } }
+		public bool Disabled =>
+			Manager.Self.Owner.WinState == WinState.Lost ||
+			(!prereqsAvailable && !Manager.DevMode.AllTech) ||
+			!instancesEnabled ||
+			oneShotFired;
 
 		public SupportPowerInfo Info { get { return Instances.Select(i => i.Info).FirstOrDefault(); } }
-		public bool Ready { get { return Active && RemainingTime == 0; } }
+		public bool Ready => Active && RemainingTicks == 0;
 
 		bool instancesEnabled;
 		bool prereqsAvailable = true;
 		bool oneShotFired;
+		protected bool notifiedCharging;
+		bool notifiedReady;
 
-		public SupportPowerInstance(string key, SupportPowerManager manager)
+		public void ResetTimer()
 		{
-			this.manager = manager;
-			Key = key;
+			remainingSubTicks = TotalTicks * 100;
 		}
 
-		public void PrerequisitesAvailable(bool available)
+		public SupportPowerInstance(string key, SupportPowerInfo info, SupportPowerManager manager)
+		{
+			Key = key;
+			TotalTicks = info.ChargeInterval;
+			remainingSubTicks = info.StartFullyCharged ? 0 : TotalTicks * 100;
+
+			Manager = manager;
+		}
+
+		public virtual void PrerequisitesAvailable(bool available)
 		{
 			prereqsAvailable = available;
+
+			if (!available)
+				remainingSubTicks = TotalTicks * 100;
 		}
 
-		bool notifiedCharging;
-		bool notifiedReady;
-		public void Tick()
+		public virtual void Tick()
 		{
 			instancesEnabled = Instances.Any(i => !i.IsTraitDisabled);
 			if (!instancesEnabled)
-				RemainingTime = TotalTime;
+				remainingSubTicks = TotalTicks * 100;
 
 			Active = !Disabled && Instances.Any(i => !i.IsTraitPaused);
 			if (!Active)
 				return;
 
-			if (Active)
+			var power = Instances.First();
+			if (Manager.DevMode.FastCharge && remainingSubTicks > 2500)
+				remainingSubTicks = 2500;
+
+			if (remainingSubTicks > 0)
+				remainingSubTicks = (remainingSubTicks - 100).Clamp(0, TotalTicks * 100);
+
+			if (!notifiedCharging)
 			{
-				var power = Instances.First();
-				if (manager.DevMode.FastCharge && RemainingTime > 25)
-					RemainingTime = 25;
+				power.Charging(power.Self, Key);
+				notifiedCharging = true;
+			}
 
-				if (RemainingTime > 0)
-					--RemainingTime;
-				if (!notifiedCharging)
-				{
-					power.Charging(power.Self, Key);
-					notifiedCharging = true;
-				}
-
-				if (RemainingTime == 0
-					&& !notifiedReady)
-				{
-					power.Charged(power.Self, Key);
-					notifiedReady = true;
-				}
+			if (RemainingTicks == 0 && !notifiedReady)
+			{
+				power.Charged(power.Self, Key);
+				notifiedReady = true;
 			}
 		}
 
-		public void Target()
+		public virtual void Target()
 		{
 			if (!Ready)
 				return;
 
 			var power = Instances.FirstOrDefault(i => !i.IsTraitPaused);
+
 			if (power == null)
 				return;
 
-			power.SelectTarget(power.Self, Key, manager);
+			Game.Sound.PlayToPlayer(SoundType.UI, Manager.Self.Owner, Info.SelectTargetSound);
+			Game.Sound.PlayNotification(power.Self.World.Map.Rules, power.Self.Owner, "Speech",
+				Info.SelectTargetSpeechNotification, power.Self.Owner.Faction.InternalName);
+
+			TextNotificationsManager.AddTransientLine(Info.SelectTargetTextNotification, power.Self.Owner);
+
+			power.SelectTarget(power.Self, Key, Manager);
 		}
 
-		public void Activate(Order order)
+		public virtual void Activate(Order order)
 		{
 			if (!Ready)
 				return;
@@ -247,8 +254,8 @@ namespace OpenRA.Mods.Common.Traits
 				return;
 
 			// Note: order.Subject is the *player* actor
-			power.Activate(power.Self, order, manager);
-			RemainingTime = TotalTime;
+			power.Activate(power.Self, order, Manager);
+			remainingSubTicks = TotalTicks * 100;
 			notifiedCharging = notifiedReady = false;
 
 			if (Info.OneShot)
@@ -256,6 +263,16 @@ namespace OpenRA.Mods.Common.Traits
 				PrerequisitesAvailable(false);
 				oneShotFired = true;
 			}
+		}
+
+		public virtual string IconOverlayTextOverride()
+		{
+			return null;
+		}
+
+		public virtual string TooltipTimeTextOverride()
+		{
+			return null;
 		}
 	}
 
@@ -266,7 +283,7 @@ namespace OpenRA.Mods.Common.Traits
 		readonly string cursor;
 		readonly MouseButton expectedButton;
 
-		public string OrderKey { get { return order; } }
+		public string OrderKey => order;
 
 		public SelectGenericPowerTarget(string order, SupportPowerManager manager, string cursor, MouseButton button)
 		{
@@ -290,12 +307,13 @@ namespace OpenRA.Mods.Common.Traits
 		protected override void Tick(World world)
 		{
 			// Cancel the OG if we can't use the power
-			if (!manager.Powers.ContainsKey(order))
+			if (!manager.Powers.TryGetValue(order, out var p) || !p.Active || !p.Ready)
 				world.CancelInputMode();
 		}
 
 		protected override IEnumerable<IRenderable> Render(WorldRenderer wr, World world) { yield break; }
 		protected override IEnumerable<IRenderable> RenderAboveShroud(WorldRenderer wr, World world) { yield break; }
+		protected override IEnumerable<IRenderable> RenderAnnotations(WorldRenderer wr, World world) { yield break; }
 		protected override string GetCursor(World world, CPos cell, int2 worldPixel, MouseInput mi)
 		{
 			return world.Map.Contains(cell) ? cursor : "generic-blocked";

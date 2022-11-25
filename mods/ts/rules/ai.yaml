@@ -17,11 +17,12 @@ Player:
 		ExcessPowerIncreaseThreshold: 4
 		ConstructionYardTypes: gacnst
 		RefineryTypes: proc
-		PowerTypes: gapowr, napowr, naapwr
+		PowerTypes: gapowr, gapowrup, napowr, naapwr
 		BarracksTypes: gapile, nahand
 		VehiclesFactoryTypes: gaweap, naweap
-		ProductionTypes: gapile, nahand, gaweap, naweap
+		ProductionTypes: gapile, nahand, gaweap, naweap, gahpad, nahpad
 		SiloTypes: gasilo
+		DefenseTypes: gavulc,garock,gacsam,gactwr,naobel,nalasr,nasam
 		BuildingLimits:
 			proc: 4
 			gasilo: 2
@@ -36,9 +37,12 @@ Player:
 			gatech: 1
 			natech: 1
 			nastlh: 1
+			gahpad: 3
+			nahpad: 3
 			gavulc: 8
 			garock: 2
 			gacsam: 4
+			gactwr: 14
 			naobel: 2
 			nalasr: 8
 			nasam: 4
@@ -53,10 +57,13 @@ Player:
 			gatech: 1
 			natech: 1
 			nastlh: 1
+			gahpad: 1
+			nahpad: 1
 			nalasr: 10
 			gavulc: 10
 			garock: 3
 			gacsam: 6
+			gactwr: 18
 			nasam: 6
 			naobel: 3
 	BuildingRepairBotModule:
@@ -64,10 +71,13 @@ Player:
 	SquadManagerBotModule@test:
 		RequiresCondition: enable-test-ai
 		SquadSize: 20
-		ExcludeFromSquadsTypes: harv, mcv
+		ExcludeFromSquadsTypes: harv, mcv, dpod, hunter
 		ConstructionYardTypes: gacnst
+		AirUnitsTypes: orca, orcab, scrin, apache, jumpjet
+		ProtectionTypes: gapowr, gapowrup, gapile, gaweap, gahpad, gadept, garadr, gatech, gaplug, gagate_a, gagate_b, gactwr, gavulc, garock, gacsam, napowr, naapwr, nahand, naweap, nahpad, naradr, natech, nastlh, natmpl, namisl, nawast, nagate_a, nagate_b, nalasr, naobel, nasam, weed, gacnst, proc, gasilo, napuls, mcv, harv
 	UnitBuilderBotModule@test:
 		RequiresCondition: enable-test-ai
+		UnitQueues: Vehicle, Infantry, Air
 		UnitsToBuild:
 			e1: 80
 			e2: 25
@@ -86,6 +96,10 @@ Player:
 			subtank: 10
 			sonic: 10
 			stnk: 8
+			orca: 5
+			orcab: 4
+			apache: 5
+			scrin: 4
 		UnitLimits:
 			harv: 12
 			medic: 3

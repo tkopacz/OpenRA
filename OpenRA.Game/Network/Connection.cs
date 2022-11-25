@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,8 +10,11 @@
 #endregion
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using OpenRA.Server;
@@ -29,197 +32,242 @@ namespace OpenRA.Network
 	public interface IConnection : IDisposable
 	{
 		int LocalClientId { get; }
-		ConnectionState ConnectionState { get; }
-		void Send(int frame, List<byte[]> orders);
-		void SendImmediate(IEnumerable<byte[]> orders);
-		void SendSync(int frame, byte[] syncData);
-		void Receive(Action<int, byte[]> packetFn);
+		void StartGame();
+		void Send(int frame, IEnumerable<Order> orders);
+		void SendImmediate(IEnumerable<Order> orders);
+		void SendSync(int frame, int syncHash, ulong defeatState);
+		void Receive(OrderManager orderManager);
 	}
 
-	class EchoConnection : IConnection
+	public sealed class EchoConnection : IConnection
 	{
-		protected struct ReceivedPacket
+		const int LocalClientId = 1;
+		readonly Queue<(int Frame, int SyncHash, ulong DefeatState)> sync = new Queue<(int, int, ulong)>();
+		readonly Queue<(int Frame, OrderPacket Orders)> orders = new Queue<(int, OrderPacket)>();
+		readonly Queue<OrderPacket> immediateOrders = new Queue<OrderPacket>();
+		bool disposed;
+
+		int IConnection.LocalClientId => LocalClientId;
+
+		void IConnection.StartGame()
 		{
-			public int FromClient;
-			public byte[] Data;
+			// Inject an empty frame to fill the gap we are making by projecting forward orders
+			orders.Enqueue((0, new OrderPacket(Array.Empty<Order>())));
 		}
 
-		readonly List<ReceivedPacket> receivedPackets = new List<ReceivedPacket>();
-		public ReplayRecorder Recorder { get; private set; }
-
-		public virtual int LocalClientId
+		void IConnection.Send(int frame, IEnumerable<Order> o)
 		{
-			get { return 1; }
+			orders.Enqueue((frame, new OrderPacket(o.ToArray())));
 		}
 
-		public virtual ConnectionState ConnectionState
+		void IConnection.SendImmediate(IEnumerable<Order> o)
 		{
-			get { return ConnectionState.PreConnecting; }
+			immediateOrders.Enqueue(new OrderPacket(o.ToArray()));
 		}
 
-		public virtual void Send(int frame, List<byte[]> orders)
+		void IConnection.SendSync(int frame, int syncHash, ulong defeatState)
 		{
-			var ms = new MemoryStream();
-			ms.WriteArray(BitConverter.GetBytes(frame));
-			foreach (var o in orders)
-				ms.WriteArray(o);
-			Send(ms.ToArray());
+			sync.Enqueue((frame, syncHash, defeatState));
 		}
 
-		public virtual void SendImmediate(IEnumerable<byte[]> orders)
+		void IConnection.Receive(OrderManager orderManager)
 		{
-			foreach (var o in orders)
+			while (immediateOrders.TryDequeue(out var i))
 			{
-				var ms = new MemoryStream();
-				ms.WriteArray(BitConverter.GetBytes(0));
-				ms.WriteArray(o);
-				Send(ms.ToArray());
-			}
-		}
+				orderManager.ReceiveImmediateOrders(LocalClientId, i);
 
-		public virtual void SendSync(int frame, byte[] syncData)
-		{
-			var ms = new MemoryStream(4 + syncData.Length);
-			ms.WriteArray(BitConverter.GetBytes(frame));
-			ms.WriteArray(syncData);
-			Send(ms.GetBuffer());
-		}
-
-		protected virtual void Send(byte[] packet)
-		{
-			if (packet.Length == 0)
-				throw new NotImplementedException();
-			AddPacket(new ReceivedPacket { FromClient = LocalClientId, Data = packet });
-		}
-
-		protected void AddPacket(ReceivedPacket packet)
-		{
-			lock (receivedPackets)
-				receivedPackets.Add(packet);
-		}
-
-		public virtual void Receive(Action<int, byte[]> packetFn)
-		{
-			ReceivedPacket[] packets;
-			lock (receivedPackets)
-			{
-				packets = receivedPackets.ToArray();
-				receivedPackets.Clear();
+				// An immediate order may trigger a chain of actions that disposes the OrderManager and connection.
+				// Bail out to avoid potential problems from acting on disposed objects.
+				if (disposed)
+					break;
 			}
 
-			foreach (var p in packets)
-			{
-				packetFn(p.FromClient, p.Data);
-				if (Recorder != null)
-					Recorder.Receive(p.FromClient, p.Data);
-			}
+			// Project orders forward to the next frame
+			while (orders.TryDequeue(out var o))
+				orderManager.ReceiveOrders(LocalClientId, (o.Frame + 1, o.Orders));
+
+			while (sync.TryDequeue(out var s))
+				orderManager.ReceiveSync(s);
 		}
 
-		public void StartRecording(Func<string> chooseFilename)
+		void IDisposable.Dispose()
 		{
-			// If we have a previous recording then save/dispose it and start a new one.
-			if (Recorder != null)
-				Recorder.Dispose();
-			Recorder = new ReplayRecorder(chooseFilename);
-		}
-
-		protected virtual void Dispose(bool disposing)
-		{
-			if (disposing && Recorder != null)
-				Recorder.Dispose();
-		}
-
-		public void Dispose()
-		{
-			Dispose(true);
-			GC.SuppressFinalize(this);
+			disposed = true;
 		}
 	}
 
-	sealed class NetworkConnection : EchoConnection
+	public sealed class NetworkConnection : IConnection
 	{
-		readonly TcpClient tcp;
-		readonly List<byte[]> queuedSyncPackets = new List<byte[]>();
+		public readonly ConnectionTarget Target;
+		internal ReplayRecorder Recorder { get; private set; }
+		readonly Queue<(int Frame, int SyncHash, ulong DefeatState)> sentSync = new Queue<(int, int, ulong)>();
+		readonly Queue<(int Frame, int SyncHash, ulong DefeatState)> queuedSyncPackets = new Queue<(int, int, ulong)>();
+
+		readonly Queue<(int Frame, OrderPacket Orders)> sentOrders = new Queue<(int, OrderPacket)>();
+		readonly Queue<OrderPacket> sentImmediateOrders = new Queue<OrderPacket>();
+		readonly ConcurrentQueue<(int FromClient, byte[] Data)> receivedPackets = new ConcurrentQueue<(int, byte[])>();
+		TcpClient tcp;
+		IPEndPoint endpoint;
+
 		volatile ConnectionState connectionState = ConnectionState.Connecting;
 		volatile int clientId;
 		bool disposed;
+		string errorMessage;
 
-		public NetworkConnection(string host, int port)
+		public NetworkConnection(ConnectionTarget target)
 		{
-			try
+			Target = target;
+			new Thread(NetworkConnectionConnect)
 			{
-				tcp = new TcpClient(host, port) { NoDelay = true };
+				Name = $"{GetType().Name} (connect to {target})",
+				IsBackground = true
+			}.Start();
+		}
+
+		void NetworkConnectionConnect()
+		{
+			var queue = new BlockingCollection<TcpClient>();
+
+			var atLeastOneEndpoint = false;
+			foreach (var endpoint in Target.GetConnectEndPoints())
+			{
+				atLeastOneEndpoint = true;
+				new Thread(() =>
+				{
+					try
+					{
+						var client = new TcpClient(endpoint.AddressFamily) { NoDelay = true };
+						client.Connect(endpoint.Address, endpoint.Port);
+
+						try
+						{
+							queue.Add(client);
+						}
+						catch (InvalidOperationException)
+						{
+							// Another connection was faster, close this one.
+							client.Close();
+						}
+					}
+					catch (Exception ex)
+					{
+						errorMessage = "Failed to connect";
+						Log.Write("client", $"Failed to connect to {endpoint}: {ex.Message}");
+					}
+				})
+				{
+					Name = $"{GetType().Name} (connect to {endpoint})",
+					IsBackground = true
+				}.Start();
+			}
+
+			if (!atLeastOneEndpoint)
+			{
+				errorMessage = "Failed to resolve address";
+				connectionState = ConnectionState.NotConnected;
+			}
+
+			// Wait up to 5s for a successful connection. This should hopefully be enough because such high latency makes the game unplayable anyway.
+			else if (queue.TryTake(out tcp, 5000))
+			{
+				// Copy endpoint here to have it even after getting disconnected.
+				endpoint = (IPEndPoint)tcp.Client.RemoteEndPoint;
+
 				new Thread(NetworkConnectionReceive)
 				{
-					Name = GetType().Name + " " + host + ":" + port,
+					Name = $"{GetType().Name} (receive from {tcp.Client.RemoteEndPoint})",
 					IsBackground = true
-				}.Start(tcp.GetStream());
+				}.Start();
 			}
-			catch
+			else
 			{
 				connectionState = ConnectionState.NotConnected;
 			}
+
+			// Close all unneeded connections in the queue and make sure new ones are closed on the connect thread.
+			queue.CompleteAdding();
+			foreach (var client in queue)
+				client.Close();
 		}
 
-		void NetworkConnectionReceive(object networkStreamObject)
+		void NetworkConnectionReceive()
 		{
 			try
 			{
-				var networkStream = (NetworkStream)networkStreamObject;
-				var reader = new BinaryReader(networkStream);
-				var serverProtocol = reader.ReadInt32();
+				var stream = tcp.GetStream();
+				var handshakeProtocol = stream.ReadInt32();
 
-				if (serverProtocol != ProtocolVersion.Version)
-					throw new InvalidOperationException(
-						"Protocol version mismatch. Server={0} Client={1}"
-							.F(serverProtocol, ProtocolVersion.Version));
+				if (handshakeProtocol != ProtocolVersion.Handshake)
+					throw new InvalidOperationException($"Handshake protocol version mismatch. Server={handshakeProtocol} Client={ProtocolVersion.Handshake}");
 
-				clientId = reader.ReadInt32();
+				clientId = stream.ReadInt32();
 				connectionState = ConnectionState.Connected;
 
 				while (true)
 				{
-					var len = reader.ReadInt32();
-					var client = reader.ReadInt32();
-					var buf = reader.ReadBytes(len);
+					var len = stream.ReadInt32();
+					var client = stream.ReadInt32();
+					var buf = stream.ReadBytes(len);
 					if (len == 0)
 						throw new NotImplementedException();
-					AddPacket(new ReceivedPacket { FromClient = client, Data = buf });
+					receivedPackets.Enqueue((client, buf));
 				}
 			}
-			catch { }
+			catch (Exception ex)
+			{
+				errorMessage = "Connection failed";
+				Log.Write("client", $"Connection to {endpoint} failed: {ex.Message}");
+			}
 			finally
 			{
 				connectionState = ConnectionState.NotConnected;
 			}
 		}
 
-		public override int LocalClientId { get { return clientId; } }
-		public override ConnectionState ConnectionState { get { return connectionState; } }
+		int IConnection.LocalClientId => clientId;
 
-		public override void SendSync(int frame, byte[] syncData)
+		void IConnection.StartGame() { }
+
+		void IConnection.Send(int frame, IEnumerable<Order> orders)
 		{
-			var ms = new MemoryStream(4 + syncData.Length);
-			ms.WriteArray(BitConverter.GetBytes(frame));
-			ms.WriteArray(syncData);
-			queuedSyncPackets.Add(ms.GetBuffer());
+			var o = new OrderPacket(orders.ToArray());
+			sentOrders.Enqueue((frame, o));
+			Send(o.Serialize(frame));
 		}
 
-		protected override void Send(byte[] packet)
+		void IConnection.SendImmediate(IEnumerable<Order> orders)
 		{
-			base.Send(packet);
+			var o = new OrderPacket(orders.ToArray());
+			sentImmediateOrders.Enqueue(o);
+			Send(o.Serialize(0));
+		}
 
+		void IConnection.SendSync(int frame, int syncHash, ulong defeatState)
+		{
+			// Send sync packets together with the next set of orders.
+			// This was originally explained as reducing network bandwidth
+			// (TCP overhead?), but the original discussions have been lost to time.
+			// Add the sync packets to the send queue before adding them to the local sync queue in the Send() method.
+			// Otherwise the client will process the local sync queue before sending the packet.
+			queuedSyncPackets.Enqueue((frame, syncHash, defeatState));
+		}
+
+		void Send(byte[] packet)
+		{
 			try
 			{
 				var ms = new MemoryStream();
 				ms.WriteArray(BitConverter.GetBytes(packet.Length));
 				ms.WriteArray(packet);
 
-				foreach (var q in queuedSyncPackets)
+				foreach (var s in queuedSyncPackets)
 				{
+					var q = OrderIO.SerializeSync(s);
+
 					ms.WriteArray(BitConverter.GetBytes(q.Length));
 					ms.WriteArray(q);
-					base.Send(q);
+
+					sentSync.Enqueue(s);
 				}
 
 				queuedSyncPackets.Clear();
@@ -231,18 +279,112 @@ namespace OpenRA.Network
 			catch (IOException) { /* ditto */ }
 		}
 
-		protected override void Dispose(bool disposing)
+		void IConnection.Receive(OrderManager orderManager)
+		{
+			// Locally generated orders
+			while (sentImmediateOrders.TryDequeue(out var i))
+			{
+				orderManager.ReceiveImmediateOrders(clientId, i);
+				Recorder?.Receive(clientId, i.Serialize(0));
+
+				// An immediate order may trigger a chain of actions that disposes the OrderManager and connection.
+				// Bail out to avoid potential problems from acting on disposed objects.
+				if (disposed)
+					return;
+			}
+
+			while (sentSync.TryDequeue(out var s))
+			{
+				orderManager.ReceiveSync(s);
+				Recorder?.Receive(clientId, OrderIO.SerializeSync(s));
+			}
+
+			// Orders from other players
+			while (receivedPackets.TryDequeue(out var p))
+			{
+				if (OrderIO.TryParseDisconnect(p, out var disconnect))
+				{
+					orderManager.ReceiveDisconnect(disconnect.ClientId, disconnect.Frame);
+					Recorder?.Receive(p.FromClient, p.Data);
+				}
+				else if (OrderIO.TryParseSync(p.Data, out var sync))
+				{
+					orderManager.ReceiveSync(sync);
+					Recorder?.Receive(p.FromClient, p.Data);
+				}
+				else if (OrderIO.TryParseTickScale(p, out var scale))
+					orderManager.ReceiveTickScale(scale);
+				else if (OrderIO.TryParsePingRequest(p, out var timestamp))
+				{
+					// Note that processing this here, rather than in NetworkConnectionReceive,
+					// so that poor world tick performance can be reflected in the latency measurement
+					Send(OrderIO.SerializePingResponse(timestamp, (byte)orderManager.OrderQueueLength));
+				}
+				else if (OrderIO.TryParseAck(p, out var ackFrame, out var ackCount))
+				{
+					if (ackCount > sentOrders.Count)
+						throw new InvalidOperationException($"Received Ack for {ackCount} > {sentOrders.Count} frames.");
+
+					// The Acknowledgement packet is a placeholder that tells us to process the first packet in our
+					// local sent buffer and the frame at which it should be applied. This is an optimization to avoid having
+					// to send the (much larger than 5 byte) packet back to us over the network.
+					OrderPacket packet;
+					if (ackCount != 1)
+					{
+						var orders = Enumerable.Range(0, ackCount)
+							.Select(i => sentOrders.Dequeue().Orders);
+						packet = OrderPacket.Combine(orders);
+					}
+					else
+						packet = sentOrders.Dequeue().Orders;
+
+					orderManager.ReceiveOrders(clientId, (ackFrame, packet));
+					Recorder?.Receive(clientId, packet.Serialize(ackFrame));
+				}
+				else if (OrderIO.TryParseOrderPacket(p.Data, out var orders))
+				{
+					if (orders.Frame == 0)
+						orderManager.ReceiveImmediateOrders(p.FromClient, orders.Orders);
+					else
+						orderManager.ReceiveOrders(p.FromClient, orders);
+
+					Recorder?.Receive(p.FromClient, p.Data);
+				}
+				else
+					throw new InvalidDataException($"Received unknown packet from client {p.FromClient} with length {p.Data.Length}");
+
+				// An immediate order may trigger a chain of actions that disposes the OrderManager and connection.
+				// Bail out to avoid potential problems from acting on disposed objects.
+				if (disposed)
+					return;
+			}
+		}
+
+		public void StartRecording(Func<string> chooseFilename)
+		{
+			// If we have a previous recording then save/dispose it and start a new one.
+			Recorder?.Dispose();
+			Recorder = new ReplayRecorder(chooseFilename);
+		}
+
+		public ConnectionState ConnectionState => connectionState;
+
+		public IPEndPoint EndPoint => endpoint;
+
+		public string ErrorMessage => errorMessage;
+
+		void IDisposable.Dispose()
 		{
 			if (disposed)
 				return;
+
 			disposed = true;
 
 			// Closing the stream will cause any reads on the receiving thread to throw.
 			// This will mark the connection as no longer connected and the thread will terminate cleanly.
-			if (tcp != null)
-				tcp.Close();
+			tcp?.Close();
 
-			base.Dispose(disposing);
+			Recorder?.Dispose();
 		}
 	}
 }

@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -13,7 +13,7 @@ DeathThreshold =
 }
 
 TanyaType = "e7"
-if Map.LobbyOption("difficulty") ~= "easy" then
+if Difficulty ~= "easy" then
 	TanyaType = "e7.noautotarget"
 end
 
@@ -107,24 +107,24 @@ end
 
 SendParabombs = function()
 	local proxy = Actor.Create("powerproxy.parabombs", false, { Owner = soviets })
-	proxy.SendAirstrikeFrom(BadgerEntryPoint2.Location, ParabombPoint1.Location)
-	proxy.SendAirstrikeFrom(BadgerEntryPoint2.Location + CVec.New(0, 3), ParabombPoint2.Location)
+	proxy.TargetAirstrike(ParabombPoint1.CenterPosition, (BadgerEntryPoint2.CenterPosition - ParabombPoint1.CenterPosition).Facing)
+	proxy.TargetAirstrike(ParabombPoint2.CenterPosition, (Map.CenterOfCell(BadgerEntryPoint2.Location + CVec.New(0, 3)) - ParabombPoint2.CenterPosition).Facing)
 	proxy.Destroy()
 end
 
 SendParatroopers = function()
 	Utils.Do(Paratroopers, function(para)
 		local proxy = Actor.Create(para.proxy, false, { Owner = soviets })
-		local units = proxy.SendParatroopersFrom(para.entry, para.drop)
-		proxy.Destroy()
+		local target = Map.CenterOfCell(para.drop)
+		local dir = target - Map.CenterOfCell(para.entry)
 
-		Utils.Do(units, function(unit)
-			Trigger.OnIdle(unit, function(a)
-				if a.IsInWorld then
-					a.Hunt()
-				end
+		local aircraft = proxy.TargetParatroopers(target, dir.Facing)
+		Utils.Do(aircraft, function(a)
+			Trigger.OnPassengerExited(a, function(t, p)
+				IdleHunt(p)
 			end)
 		end)
+		proxy.Destroy()
 	end)
 end
 
@@ -150,7 +150,7 @@ ProduceInfantry = function()
 	soviets.Build({ Utils.Random(SovietInfantry) }, function(units)
 		table.insert(AttackGroup, units[1])
 		SendAttackGroup()
-		Trigger.AfterDelay(ProductionInterval[Map.LobbyOption("difficulty")], ProduceInfantry)
+		Trigger.AfterDelay(ProductionInterval[Difficulty], ProduceInfantry)
 	end)
 end
 
@@ -162,7 +162,7 @@ ProduceVehicles = function()
 	soviets.Build({ Utils.Random(SovietVehicles[SovietVehicleType]) }, function(units)
 		table.insert(AttackGroup, units[1])
 		SendAttackGroup()
-		Trigger.AfterDelay(ProductionInterval[Map.LobbyOption("difficulty")], ProduceVehicles)
+		Trigger.AfterDelay(ProductionInterval[Difficulty], ProduceVehicles)
 	end)
 end
 
@@ -183,7 +183,7 @@ Tick = function()
 		allies2.MarkCompletedObjective(objCutSovietPower)
 	end
 
-	if not allies2.IsObjectiveCompleted(objLimitLosses) and allies2.UnitsLost > DeathThreshold[Map.LobbyOption("difficulty")] then
+	if not allies2.IsObjectiveCompleted(objLimitLosses) and allies2.UnitsLost > DeathThreshold[Difficulty] then
 		allies2.MarkFailedObjective(objLimitLosses)
 	end
 
@@ -197,7 +197,7 @@ end
 SetupSoviets = function()
 	soviets.Cash = 1000
 
-	if Map.LobbyOption("difficulty") == "easy" then
+	if Difficulty == "easy" then
 		Utils.Do(Sams, function(sam)
 			local camera = Actor.Create("Camera.SAM", true, { Owner = allies1, Location = sam.Location })
 			Trigger.OnKilledOrCaptured(sam, function()
@@ -209,7 +209,7 @@ SetupSoviets = function()
 	local buildings = Utils.Where(Map.ActorsInWorld, function(self) return self.Owner == soviets and self.HasProperty("StartBuildingRepairs") end)
 	Utils.Do(buildings, function(actor)
 		Trigger.OnDamaged(actor, function(building)
-			if building.Owner == soviets and building.Health < (building.MaxHealth * RepairTriggerThreshold[Map.LobbyOption("difficulty")] / 100) then
+			if building.Owner == soviets and building.Health < (building.MaxHealth * RepairTriggerThreshold[Difficulty] / 100) then
 				building.StartBuildingRepairs()
 			end
 		end)
@@ -234,7 +234,7 @@ SetupTriggers = function()
 
 	Trigger.OnAllKilledOrCaptured(Sams, function()
 		allies1.MarkCompletedObjective(objDestroySamSites)
-		objExtractEinstein = allies1.AddPrimaryObjective("Wait for a helicopter at the LZ and extract Einstein.")
+		objExtractEinstein = allies1.AddObjective("Wait for a helicopter at the LZ and extract Einstein.")
 		Actor.Create("flare", true, { Owner = allies1, Location = ExtractionLZ.Location + CVec.New(1, -1) })
 		Beacon.New(allies1, ExtractionLZ.CenterPosition)
 		Media.PlaySpeechNotification(allies1, "SignalFlareNorth")
@@ -263,7 +263,7 @@ SetupTriggers = function()
 			ReassignActors(TownUnits, neutral, allies1)
 			Utils.Do(TownUnits, function(a) a.Stance = "Defend" end)
 			allies1.MarkCompletedObjective(objFindEinstein)
-			objEinsteinSurvival = allies1.AddPrimaryObjective("Keep Einstein alive at all costs.")
+			objEinsteinSurvival = allies1.AddObjective("Keep Einstein alive at all costs.")
 			Trigger.OnKilled(Einstein, function()
 				allies1.MarkFailedObjective(objEinsteinSurvival)
 			end)
@@ -290,7 +290,7 @@ end
 SpawnTanya = function()
 	Tanya = Actor.Create(TanyaType, true, { Owner = allies1, Location = TanyaLocation.Location })
 
-	if Map.LobbyOption("difficulty") ~= "easy" and allies1.IsLocalPlayer then
+	if Difficulty ~= "easy" and allies1.IsLocalPlayer then
 		Trigger.AfterDelay(DateTime.Seconds(2), function()
 			Media.DisplayMessage("According to the rules of engagement I need your explicit orders to fire, Commander!", "Tanya")
 		end)
@@ -322,25 +322,7 @@ WorldLoaded = function()
 
 	Utils.Do({ allies1, allies2 }, function(player)
 		if player and player.IsLocalPlayer then
-			Trigger.OnObjectiveAdded(player, function(p, id)
-				Media.DisplayMessage(p.GetObjectiveDescription(id), "New " .. string.lower(p.GetObjectiveType(id)) .. " objective")
-			end)
-
-			Trigger.OnObjectiveCompleted(player, function(p, id)
-				Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-			end)
-
-			Trigger.OnObjectiveFailed(player, function(p, id)
-				Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-			end)
-
-			Trigger.OnPlayerWon(player, function()
-				Media.PlaySpeechNotification(player, "MissionAccomplished")
-			end)
-
-			Trigger.OnPlayerLost(player, function()
-				Media.PlaySpeechNotification(player, "MissionFailed")
-			end)
+			InitObjectives(player)
 		end
 	end)
 
@@ -357,13 +339,13 @@ WorldLoaded = function()
 	ReassignActors(Map.ActorsInWorld, allies, allies2)
 	SpawnTanya()
 
-	objTanyaMustSurvive = allies1.AddPrimaryObjective("Tanya must survive.")
-	objFindEinstein = allies1.AddPrimaryObjective("Find Einstein's crashed helicopter.")
-	objDestroySamSites = allies1.AddPrimaryObjective("Destroy the SAM sites.")
+	objTanyaMustSurvive = allies1.AddObjective("Tanya must survive.")
+	objFindEinstein = allies1.AddObjective("Find Einstein's crashed helicopter.")
+	objDestroySamSites = allies1.AddObjective("Destroy the SAM sites.")
 
-	objHoldPosition = allies2.AddPrimaryObjective("Hold your position and protect the base.")
-	objLimitLosses = allies2.AddSecondaryObjective("Do not lose more than " .. DeathThreshold[Map.LobbyOption("difficulty")] .. " units.")
-	objCutSovietPower = allies2.AddSecondaryObjective("Take out the Soviet power grid.")
+	objHoldPosition = allies2.AddObjective("Hold your position and protect the base.")
+	objLimitLosses = allies2.AddObjective("Do not lose more than " .. DeathThreshold[Difficulty] .. " units.", "Secondary", false)
+	objCutSovietPower = allies2.AddObjective("Take out the Soviet power grid.", "Secondary", false)
 
 	SetupTriggers()
 	SetupSoviets()

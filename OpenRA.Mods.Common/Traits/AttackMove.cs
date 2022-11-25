@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,19 +11,21 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using OpenRA.Graphics;
 using OpenRA.Mods.Common.Activities;
-using OpenRA.Orders;
+using OpenRA.Mods.Common.Orders;
 using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("Provides access to the attack-move command, which will make the actor automatically engage viable targets while moving to the destination.")]
-	class AttackMoveInfo : ITraitInfo, Requires<IMoveInfo>
+	class AttackMoveInfo : TraitInfo, Requires<IMoveInfo>
 	{
 		[VoiceReference]
 		public readonly string Voice = "Action";
+
+		[Desc("Color to use for the target line.")]
+		public readonly Color TargetLineColor = Color.OrangeRed;
 
 		[GrantedConditionReference]
 		[Desc("The condition to grant to self while an attack-move is active.")]
@@ -36,7 +38,19 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Can the actor be ordered to move in to shroud?")]
 		public readonly bool MoveIntoShroud = true;
 
-		public object Create(ActorInitializer init) { return new AttackMove(init.Self, this); }
+		[CursorReference]
+		public readonly string AttackMoveCursor = "attackmove";
+
+		[CursorReference]
+		public readonly string AttackMoveBlockedCursor = "attackmove-blocked";
+
+		[CursorReference]
+		public readonly string AssaultMoveCursor = "assaultmove";
+
+		[CursorReference]
+		public readonly string AssaultMoveBlockedCursor = "assaultmove-blocked";
+
+		public override object Create(ActorInitializer init) { return new AttackMove(init.Self, this); }
 	}
 
 	class AttackMove : IResolveOrder, IOrderVoice
@@ -69,24 +83,24 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			if (order.OrderString == "AttackMove" || order.OrderString == "AssaultMove")
 			{
-				if (!order.Queued)
-					self.CancelActivity();
-
 				var cell = self.World.Map.Clamp(self.World.Map.CellContaining(order.Target.CenterPosition));
 				if (!Info.MoveIntoShroud && !self.Owner.Shroud.IsExplored(cell))
 					return;
 
 				var targetLocation = move.NearestMoveableCell(cell);
-				self.SetTargetLine(Target.FromCell(self.World, targetLocation), Color.Red);
 				var assaultMoving = order.OrderString == "AssaultMove";
-				self.QueueActivity(new AttackMoveActivity(self, () => move.MoveTo(targetLocation, 1), assaultMoving));
+
+				// TODO: this should scale with unit selection group size.
+				self.QueueActivity(order.Queued, new AttackMoveActivity(self, () => move.MoveTo(targetLocation, 8, targetLineColor: Info.TargetLineColor), assaultMoving));
+				self.ShowTargetLines();
 			}
 		}
 	}
 
 	public class AttackMoveOrderGenerator : UnitOrderGenerator
 	{
-		readonly TraitPair<AttackMove>[] subjects;
+		TraitPair<AttackMove>[] subjects;
+
 		readonly MouseButton expectedButton;
 
 		public AttackMoveOrderGenerator(IEnumerable<Actor> subjects, MouseButton button)
@@ -118,35 +132,56 @@ namespace OpenRA.Mods.Common.Traits
 
 				// Cells outside the playable area should be clamped to the edge for consistency with move orders
 				cell = world.Map.Clamp(cell);
-				foreach (var s in subjects)
-					yield return new Order(orderName, s.Actor, Target.FromCell(world, cell), queued);
+				yield return new Order(orderName, null, Target.FromCell(world, cell), queued, null, subjects.Select(s => s.Actor).ToArray());
 			}
 		}
 
-		public override void Tick(World world)
+		public override void SelectionChanged(World world, IEnumerable<Actor> selected)
 		{
-			if (subjects.All(s => s.Actor.IsDead))
+			subjects = selected.Where(s => !s.IsDead).SelectMany(a => a.TraitsImplementing<AttackMove>()
+					.Select(am => new TraitPair<AttackMove>(a, am)))
+				.ToArray();
+
+			// AttackMove doesn't work without AutoTarget, so require at least one unit in the selection to have it
+			if (!subjects.Any(s => s.Actor.Info.HasTraitInfo<AutoTargetInfo>()))
 				world.CancelInputMode();
 		}
 
 		public override string GetCursor(World world, CPos cell, int2 worldPixel, MouseInput mi)
 		{
-			var prefix = mi.Modifiers.HasModifier(Modifiers.Ctrl) ? "assaultmove" : "attackmove";
+			var isAssaultMove = mi.Modifiers.HasModifier(Modifiers.Ctrl);
 
-			if (world.Map.Contains(cell) && subjects.Any())
+			var subject = subjects.FirstOrDefault();
+			if (subject.Actor != null)
 			{
-				var explored = subjects.First().Actor.Owner.Shroud.IsExplored(cell);
-				var blocked = !explored && subjects.Any(a => !a.Trait.Info.MoveIntoShroud);
-				return blocked ? prefix + "-blocked" : prefix;
+				var info = subject.Trait.Info;
+				if (world.Map.Contains(cell))
+				{
+					var explored = subject.Actor.Owner.Shroud.IsExplored(cell);
+					var cannotMove = subjects.FirstOrDefault(a => !a.Trait.Info.MoveIntoShroud).Trait;
+					var blocked = !explored && cannotMove != null;
+
+					if (isAssaultMove)
+						return blocked ? cannotMove.Info.AssaultMoveBlockedCursor : info.AssaultMoveCursor;
+
+					return blocked ? cannotMove.Info.AttackMoveBlockedCursor : info.AttackMoveCursor;
+				}
+
+				if (isAssaultMove)
+					return info.AssaultMoveBlockedCursor;
+				else
+					return info.AttackMoveBlockedCursor;
 			}
 
-			return prefix + "-blocked";
+			return null;
 		}
 
-		public override bool InputOverridesSelection(WorldRenderer wr, World world, int2 xy, MouseInput mi)
+		public override bool InputOverridesSelection(World world, int2 xy, MouseInput mi)
 		{
 			// Custom order generators always override selection
 			return true;
 		}
+
+		public override bool ClearSelectionOnLeftClick => false;
 	}
 }

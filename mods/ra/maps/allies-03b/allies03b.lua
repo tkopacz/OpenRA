@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -28,18 +28,10 @@ GuardTanks = { Heavy1, Heavy2, Heavy3 }
 CheckpointGuards = { USSRCheckpointGuard1, USSRCheckpointGuard2 }
 CheckpointGuardWaypoints = { CheckpointGuardWaypoint1, CheckpointGuardWaypoint2 }
 
-if Map.LobbyOption("difficulty") == "easy" then
+if Difficulty == "easy" then
 	TanyaType = "e7"
 else
 	TanyaType = "e7.noautotarget"
-end
-
-IdleHunt = function(actor)
-	Trigger.OnIdle(actor, function(a)
-		if a.IsInWorld then
-			a.Hunt()
-		end
-	end)
 end
 
 Tick = function()
@@ -68,7 +60,7 @@ ProduceUnits = function(factory, count)
 end
 
 SetupAlliedUnits = function()
-	Tanya = Actor.Create(TanyaType, true, { Owner = player, Location = TanyaWaypoint.Location, Facing = 128 })
+	Tanya = Actor.Create(TanyaType, true, { Owner = player, Location = TanyaWaypoint.Location, Facing = Angle.South })
 
 	if TanyaType == "e7.noautotarget" then
 		Trigger.AfterDelay(DateTime.Seconds(2), function()
@@ -89,15 +81,17 @@ SetupTopRightIsland = function()
 	player.MarkCompletedObjective(FindAllies)
 	Media.PlaySpeechNotification(player, "AlliedReinforcementsArrived")
 	Reinforcements.Reinforce(player, AlliedIslandReinforcements, { AlliedIslandReinforcementsEntry.Location, IslandParadropReinforcementsDropzone.Location })
-	SendUSSRParadrops(128 + 52, IslandParadropReinforcementsDropzone)
+	SendUSSRParadrops(Angle.New(720), IslandParadropReinforcementsDropzone)
 end
 
 SendUSSRParadrops = function(facing, dropzone)
 	local paraproxy = Actor.Create("powerproxy.paratroopers", false, { Owner = ussr })
 
-	local units = paraproxy.SendParatroopers(dropzone.CenterPosition, false, facing)
-	Utils.Do(units, function(unit)
-		IdleHunt(unit)
+	local aircraft = paraproxy.TargetParatroopers(dropzone.CenterPosition, facing)
+	Utils.Do(aircraft, function(a)
+		Trigger.OnPassengerExited(a, function(t, p)
+			IdleHunt(p)
+		end)
 	end)
 
 	paraproxy.Destroy()
@@ -176,34 +170,14 @@ InitPlayers = function()
 	ussr.Cash = 10000
 end
 
-InitObjectives = function()
-	Trigger.OnObjectiveAdded(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "New " .. string.lower(p.GetObjectiveType(id)) .. " objective")
-	end)
+AddObjectives = function()
+	InitObjectives(player)
 
-	KillBridges = player.AddPrimaryObjective("Destroy all bridges.")
-	TanyaSurvive = player.AddPrimaryObjective("Tanya must survive.")
-	FindAllies = player.AddSecondaryObjective("Find our lost tanks.")
-	FreePrisoners = player.AddSecondaryObjective("Free all Allied soldiers and keep them alive.")
-	ussr.AddPrimaryObjective("Bridges must not be destroyed.")
-
-	Trigger.OnObjectiveCompleted(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-	end)
-	Trigger.OnObjectiveFailed(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-	end)
-
-	Trigger.OnPlayerLost(player, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(player, "Lose")
-		end)
-	end)
-	Trigger.OnPlayerWon(player, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(player, "Win")
-		end)
-	end)
+	KillBridges = player.AddObjective("Destroy all bridges.")
+	TanyaSurvive = player.AddObjective("Tanya must survive.")
+	FindAllies = player.AddObjective("Find our lost tanks.", "Secondary", false)
+	FreePrisoners = player.AddObjective("Free all Allied soldiers and keep them alive.", "Secondary", false)
+	ussr.AddObjective("Bridges must not be destroyed.")
 end
 
 InitTriggers = function()
@@ -252,8 +226,8 @@ InitTriggers = function()
 			AlertFirstBase()
 		end)
 	end)
-	Trigger.OnAllRemovedFromWorld(FirstUSSRBase, function()
-		if baseCamera then
+	Trigger.OnAllKilledOrCaptured(FirstUSSRBase, function()
+		if baseCamera and baseCamera.IsInWorld then
 			baseCamera.Destroy()
 		end
 	end)
@@ -334,7 +308,7 @@ InitTriggers = function()
 		if a.Owner == player and a.Type ~= "jeep.mission" and not paradropsTriggered then
 			paradropsTriggered = true
 			Trigger.RemoveFootprintTrigger(id)
-			SendUSSRParadrops(54, ParadropReinforcementsDropzone)
+			SendUSSRParadrops(Angle.New(216), ParadropReinforcementsDropzone)
 		end
 	end)
 	Trigger.OnEnteredFootprint(ReinforcementsTriggerArea, function(a, id)
@@ -387,7 +361,7 @@ WorldLoaded = function()
 
 	InitPlayers()
 
-	InitObjectives()
+	AddObjectives()
 	InitTriggers()
 	SetupAlliedUnits()
 end

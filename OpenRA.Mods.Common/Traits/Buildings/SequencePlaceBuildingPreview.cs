@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -25,12 +25,8 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Sequence name to use.")]
 		public readonly string Sequence = "idle";
 
-		[PaletteReference("SequencePaletteIsPlayerPalette")]
-		[Desc("Custom palette name.")]
-		public readonly string SequencePalette = null;
-
-		[Desc("Custom palette is a player palette BaseName.")]
-		public readonly bool SequencePaletteIsPlayerPalette = true;
+		[Desc("Custom opacity to apply to the sequence sprite.")]
+		public readonly float SequenceAlpha = 1f;
 
 		[Desc("Footprint types to draw underneath the actor preview.")]
 		public readonly PlaceBuildingCellType FootprintUnderPreview = PlaceBuildingCellType.Valid | PlaceBuildingCellType.LineBuild;
@@ -58,20 +54,15 @@ namespace OpenRA.Mods.Common.Traits
 		readonly PaletteReference palette;
 
 		public SequencePlaceBuildingPreviewPreview(WorldRenderer wr, ActorInfo ai, SequencePlaceBuildingPreviewInfo info, TypeDictionary init)
-			: base(wr, ai, info, init)
+			: base(wr, ai, info)
 		{
 			this.info = info;
-			var owner = init.Get<OwnerInit>().Value(wr.World);
-			var faction = init.Get<FactionInit>().Value(wr.World);
+			var ownerName = init.Get<OwnerInit>().InternalName;
+			var faction = init.Get<FactionInit>().Value;
 
 			var rsi = ai.TraitInfo<RenderSpritesInfo>();
-
-			if (!string.IsNullOrEmpty(info.SequencePalette))
-				palette = wr.Palette(info.SequencePaletteIsPlayerPalette ? info.SequencePalette + owner.InternalName : info.SequencePalette);
-			else
-				palette = wr.Palette(rsi.Palette ?? rsi.PlayerPalette + owner.InternalName);
-
-			preview = new Animation(wr.World, rsi.GetImage(ai, wr.World.Map.Rules.Sequences, faction));
+			palette = wr.Palette(rsi.Palette ?? rsi.PlayerPalette + ownerName);
+			preview = new Animation(wr.World, rsi.GetImage(ai, faction));
 			preview.PlayRepeating(info.Sequence);
 		}
 
@@ -82,16 +73,18 @@ namespace OpenRA.Mods.Common.Traits
 
 		protected override IEnumerable<IRenderable> RenderInner(WorldRenderer wr, CPos topLeft, Dictionary<CPos, PlaceBuildingCellType> footprint)
 		{
-			foreach (var r in RenderDecorations(wr, topLeft))
-				yield return r;
-
 			if (info.FootprintUnderPreview != PlaceBuildingCellType.None)
 				foreach (var r in RenderFootprint(wr, topLeft, footprint, info.FootprintUnderPreview))
 					yield return r;
 
-			var centerPosition = wr.World.Map.CenterOfCell(topLeft) + centerOffset;
-			foreach (var r in preview.Render(centerPosition, WVec.Zero, 0, palette, 1.0f))
-				yield return r;
+			var centerPosition = wr.World.Map.CenterOfCell(topLeft) + CenterOffset;
+			foreach (var r in preview.Render(centerPosition, WVec.Zero, 0, palette))
+			{
+				if (info.SequenceAlpha < 1f && r is IModifyableRenderable mr)
+					yield return mr.WithAlpha(mr.Alpha * info.SequenceAlpha);
+				else
+					yield return r;
+			}
 
 			if (info.FootprintOverPreview != PlaceBuildingCellType.None)
 				foreach (var r in RenderFootprint(wr, topLeft, footprint, info.FootprintOverPreview))

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,7 +9,6 @@
  */
 #endregion
 
-using System;
 using System.Linq;
 using OpenRA.Traits;
 
@@ -63,6 +62,12 @@ namespace OpenRA.Mods.Common.Traits.Render
 				wsb.CancelCustomAnimation(self);
 				animPlaying = false;
 			}
+
+			// If an actor died before finishing resupply, there will never be a ResupplyTick call
+			// with ResupplyType.None (as activities tick before ITick), so reset here every tick
+			// to prevent the animation from continuing after the resupplied actor died.
+			repairing = false;
+			rearming = false;
 		}
 
 		void INotifyResupply.BeforeResupply(Actor self, Actor target, ResupplyType types)

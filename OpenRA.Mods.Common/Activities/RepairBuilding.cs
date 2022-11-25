@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,7 +10,6 @@
 #endregion
 
 using OpenRA.Mods.Common.Traits;
-using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Activities
@@ -21,9 +20,10 @@ namespace OpenRA.Mods.Common.Activities
 
 		Actor enterActor;
 		IHealth enterHealth;
+		EngineerRepairable enterEngineerRepariable;
 
-		public RepairBuilding(Actor self, Target target, EngineerRepairInfo info)
-			: base(self, target, Color.Yellow)
+		public RepairBuilding(Actor self, in Target target, EngineerRepairInfo info)
+			: base(self, target, info.TargetLineColor)
 		{
 			this.info = info;
 		}
@@ -32,11 +32,12 @@ namespace OpenRA.Mods.Common.Activities
 		{
 			enterActor = targetActor;
 			enterHealth = targetActor.TraitOrDefault<IHealth>();
+			enterEngineerRepariable = targetActor.TraitOrDefault<EngineerRepairable>();
 
 			// Make sure we can still repair the target before entering
 			// (but not before, because this may stop the actor in the middle of nowhere)
-			var stance = self.Owner.Stances[enterActor.Owner];
-			if (enterHealth == null || enterHealth.DamageState == DamageState.Undamaged || !info.ValidStances.HasStance(stance))
+			var stance = self.Owner.RelationshipWith(enterActor.Owner);
+			if (enterHealth == null || enterHealth.DamageState == DamageState.Undamaged || enterEngineerRepariable == null || enterEngineerRepariable.IsTraitDisabled || !info.ValidRelationships.HasRelationship(stance))
 			{
 				Cancel(self, true);
 				return false;
@@ -52,11 +53,14 @@ namespace OpenRA.Mods.Common.Activities
 			if (targetActor != enterActor)
 				return;
 
+			if (enterEngineerRepariable.IsTraitDisabled)
+				return;
+
 			if (enterHealth.DamageState == DamageState.Undamaged)
 				return;
 
-			var stance = self.Owner.Stances[enterActor.Owner];
-			if (!info.ValidStances.HasStance(stance))
+			var stance = self.Owner.RelationshipWith(enterActor.Owner);
+			if (!info.ValidRelationships.HasRelationship(stance))
 				return;
 
 			if (enterHealth.DamageState == DamageState.Undamaged)

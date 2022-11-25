@@ -26,12 +26,22 @@ E2:
 		ProneOffset: 160,128,-555
 	AttackFrontal:
 		Voice: Attack
-	WithInfantryBody:
+		FacingTolerance: 0
+	WithSplitAttackPaletteInfantryBody:
 		DefaultAttackSequence: attack
 	RevealsShroud:
 		Range: 7c0
 	ProducibleWithLevel:
 		Prerequisites: barracks.upgraded
+
+E2R3:
+	Inherits: E2
+	RenderSprites:
+		Image: E2
+	ProducibleWithLevel:
+		Prerequisites: techlevel.low
+		InitialLevels: 3
+	-Buildable:
 
 MEDIC:
 	Inherits: ^Soldier
@@ -60,21 +70,22 @@ MEDIC:
 		CrushSound: squishy2.aud
 	Armament:
 		Weapon: Heal
-		TargetStances: Ally
-		ForceTargetStances: None
+		TargetRelationships: Ally
+		ForceTargetRelationships: None
 		Cursor: heal
 		OutsideRangeCursor: heal
 	AutoTarget:
 	AutoTargetPriority@DEFAULT:
 		ValidTargets: Infantry
 	AttackFrontal:
-	WithInfantryBody:
+		FacingTolerance: 0
+	WithSplitAttackPaletteInfantryBody:
 		DefaultAttackSequence: heal
-	SelfHealing:
+	ChangesHealth:
 		Step: 500
 		Delay: 60
 	Passenger:
-		PipType: Red
+		CustomPipType: red
 
 JUMPJET:
 	Inherits: ^Soldier
@@ -102,7 +113,7 @@ JUMPJET:
 	Armor:
 		Type: Light
 	Passenger:
-		PipType: Green
+		CustomPipType: green
 	RevealsShroud:
 		Range: 6c0
 	Armament:
@@ -110,7 +121,8 @@ JUMPJET:
 	-Crushable:
 	AttackFrontal:
 		Voice: Attack
-	WithInfantryBody:
+		FacingTolerance: 0
+	WithSplitAttackPaletteInfantryBody:
 		RequiresCondition: !airborne
 		DefaultAttackSequence: attack
 	WithInfantryBody@flying:
@@ -118,6 +130,14 @@ JUMPJET:
 		DefaultAttackSequence: flying-attack
 		StandSequences: flying
 		MoveSequence: flying
+		Palette: player-nomuzzle
+		IsPlayerPalette: true
+	WithInfantryBody@flying-muzzle:
+		RequiresCondition: airborne
+		DefaultAttackSequence: flying-attack-muzzle
+		StandSequences: flying-muzzle
+		MoveSequence: flying-muzzle
+		Palette: muzzle
 	-TakeCover:
 	Hovers:
 		RequiresCondition: airborne
@@ -182,7 +202,6 @@ JUMPJET.Husk:
 		Sequence: die-falling
 	Health:
 	HitShape:
-	ConditionManager:
 	GrantConditionOnTerrain:
 		TerrainTypes: Water
 		Condition: water-death
@@ -232,10 +251,11 @@ GHOST:
 		CrushSound: squishy2.aud
 	AttackFrontal:
 		Voice: Attack
+		FacingTolerance: 0
 	Demolition:
 		DetonationDelay: 45
 		Voice: Attack
-	WithInfantryBody:
+	WithSplitAttackPaletteInfantryBody:
 		DefaultAttackSequence: attack
 	ProducibleWithLevel:
 		Prerequisites: barracks.upgraded

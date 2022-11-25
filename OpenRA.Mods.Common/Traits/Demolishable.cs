@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,12 +11,13 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("Handle demolitions from C4 explosives.")]
-	public class DemolishableInfo : ConditionalTraitInfo, IDemolishableInfo, ITraitInfo
+	public class DemolishableInfo : ConditionalTraitInfo, IDemolishableInfo
 	{
 		public bool IsValidTarget(ActorInfo actorInfo, Actor saboteur) { return true; }
 
@@ -27,33 +28,41 @@ namespace OpenRA.Mods.Common.Traits
 		public override object Create(ActorInitializer init) { return new Demolishable(this); }
 	}
 
-	public class Demolishable : ConditionalTrait<DemolishableInfo>, IDemolishable, ITick
+	public class Demolishable : ConditionalTrait<DemolishableInfo>, IDemolishable, ITick, INotifyOwnerChanged
 	{
 		class DemolishAction
 		{
 			public readonly Actor Saboteur;
 			public readonly int Token;
 			public int Delay;
+			public readonly BitSet<DamageType> DamageTypes;
 
-			public DemolishAction(Actor saboteur, int delay, int token)
+			public DemolishAction(Actor saboteur, int delay, int token, BitSet<DamageType> damageTypes)
 			{
 				Saboteur = saboteur;
 				Delay = delay;
 				Token = token;
+				DamageTypes = damageTypes;
 			}
 		}
 
-		ConditionManager conditionManager;
-		List<DemolishAction> actions = new List<DemolishAction>();
-		List<DemolishAction> removeActions = new List<DemolishAction>();
+		readonly List<DemolishAction> actions = new List<DemolishAction>();
+		readonly List<DemolishAction> removeActions = new List<DemolishAction>();
+		IDamageModifier[] damageModifiers;
 
 		public Demolishable(DemolishableInfo info)
 			: base(info) { }
 
 		protected override void Created(Actor self)
 		{
-			base.Created(self);
-			conditionManager = self.TraitOrDefault<ConditionManager>();
+			damageModifiers = self.TraitsImplementing<IDamageModifier>()
+				.Concat(self.Owner.PlayerActor.TraitsImplementing<IDamageModifier>()).ToArray();
+		}
+
+		void INotifyOwnerChanged.OnOwnerChanged(Actor self, Player oldOwner, Player newOwner)
+		{
+			damageModifiers = self.TraitsImplementing<IDamageModifier>()
+				.Concat(newOwner.PlayerActor.TraitsImplementing<IDamageModifier>()).ToArray();
 		}
 
 		bool IDemolishable.IsValidTarget(Actor self, Actor saboteur)
@@ -61,36 +70,29 @@ namespace OpenRA.Mods.Common.Traits
 			return !IsTraitDisabled;
 		}
 
-		void IDemolishable.Demolish(Actor self, Actor saboteur, int delay)
+		void IDemolishable.Demolish(Actor self, Actor saboteur, int delay, BitSet<DamageType> damageTypes)
 		{
 			if (IsTraitDisabled)
 				return;
 
-			var token = ConditionManager.InvalidConditionToken;
-			if (conditionManager != null && !string.IsNullOrEmpty(Info.Condition))
-				token = conditionManager.GrantCondition(self, Info.Condition);
-
-			actions.Add(new DemolishAction(saboteur, delay, token));
+			var token = self.GrantCondition(Info.Condition);
+			actions.Add(new DemolishAction(saboteur, delay, token, damageTypes));
 		}
 
 		void ITick.Tick(Actor self)
 		{
-			if (IsTraitDisabled)
+			if (IsTraitDisabled || actions.Count == 0)
 				return;
 
 			foreach (var a in actions)
 			{
 				if (a.Delay-- <= 0)
 				{
-					var modifiers = self.TraitsImplementing<IDamageModifier>()
-						.Concat(self.Owner.PlayerActor.TraitsImplementing<IDamageModifier>())
-						.Select(t => t.GetDamageModifier(self, null));
-
-					if (Util.ApplyPercentageModifiers(100, modifiers) > 0)
-						self.Kill(a.Saboteur);
-					else if (a.Token != ConditionManager.InvalidConditionToken)
+					if (Util.ApplyPercentageModifiers(100, damageModifiers.Select(t => t.GetDamageModifier(self, null))) > 0)
+						self.Kill(a.Saboteur, a.DamageTypes);
+					else if (a.Token != Actor.InvalidConditionToken)
 					{
-						conditionManager.RevokeCondition(self, a.Token);
+						self.RevokeCondition(a.Token);
 						removeActions.Add(a);
 					}
 				}

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -27,8 +27,11 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly WVec SquadOffset = new WVec(-1536, 1536, 0);
 
 		[NotificationReference("Speech")]
-		[Desc("Notification to play when entering the drop zone.")]
+		[Desc("Speech notification to play when entering the drop zone.")]
 		public readonly string ReinforcementsArrivedSpeechNotification = null;
+
+		[Desc("Text notification to display when entering the drop zone.")]
+		public readonly string ReinforcementsArrivedTextNotification = null;
 
 		[Desc("Number of facings that the delivery aircraft may approach from.")]
 		public readonly int QuantizedFacings = 32;
@@ -38,7 +41,7 @@ namespace OpenRA.Mods.Common.Traits
 
 		[ActorReference(typeof(PassengerInfo))]
 		[Desc("Troops to be delivered.  They will be distributed between the planes if SquadSize > 1.")]
-		public readonly string[] DropItems = { };
+		public readonly string[] DropItems = Array.Empty<string>();
 
 		[Desc("Risks stuck units when they don't have the Paratrooper trait.")]
 		public readonly bool AllowImpassableCells = false;
@@ -52,12 +55,6 @@ namespace OpenRA.Mods.Common.Traits
 
 		[Desc("Enables the player directional targeting")]
 		public readonly bool UseDirectionalTarget = false;
-
-		[Desc("Placeholder cursor animation for the target cursor when using directional targeting.")]
-		public readonly string TargetPlaceholderCursorAnimation = null;
-
-		[Desc("Palette for placeholder cursor animation.")]
-		public readonly string TargetPlaceholderCursorPalette = "chrome";
 
 		[Desc("Animation used to render the direction arrows.")]
 		public readonly string DirectionArrowAnimation = null;
@@ -84,14 +81,7 @@ namespace OpenRA.Mods.Common.Traits
 		public override void SelectTarget(Actor self, string order, SupportPowerManager manager)
 		{
 			if (info.UseDirectionalTarget)
-			{
-				Game.Sound.PlayToPlayer(SoundType.UI, manager.Self.Owner, Info.SelectTargetSound);
-				Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech",
-					Info.SelectTargetSpeechNotification, self.Owner.Faction.InternalName);
-
-				self.World.OrderGenerator = new SelectDirectionalTarget(self.World, order, manager, Info.Cursor,
-					info.TargetPlaceholderCursorAnimation, info.DirectionArrowAnimation, info.TargetPlaceholderCursorPalette, info.DirectionArrowPalette);
-			}
+				self.World.OrderGenerator = new SelectDirectionalTarget(self.World, order, manager, Info.Cursor, info.DirectionArrowAnimation, info.DirectionArrowPalette);
 			else
 				base.SelectTarget(self, order, manager);
 		}
@@ -100,27 +90,28 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			base.Activate(self, order, manager);
 
-			SendParatroopers(self, order.Target.CenterPosition, !info.UseDirectionalTarget || order.ExtraData == uint.MaxValue, (int)order.ExtraData);
+			var facing = info.UseDirectionalTarget && order.ExtraData != uint.MaxValue ? (WAngle?)WAngle.FromFacing((int)order.ExtraData) : null;
+			SendParatroopers(self, order.Target.CenterPosition, facing);
 		}
 
-		public Actor[] SendParatroopers(Actor self, WPos target, bool randomize = true, int dropFacing = 0)
+		public (Actor[] Aircraft, Actor[] Units) SendParatroopers(Actor self, WPos target, WAngle? facing = null)
 		{
+			var aircraft = new List<Actor>();
 			var units = new List<Actor>();
 
 			var info = Info as ParatroopersPowerInfo;
 
-			if (randomize)
-				dropFacing = 256 * self.World.SharedRandom.Next(info.QuantizedFacings) / info.QuantizedFacings;
+			if (!facing.HasValue)
+				facing = new WAngle(1024 * self.World.SharedRandom.Next(info.QuantizedFacings) / info.QuantizedFacings);
 
 			var utLower = info.UnitType.ToLowerInvariant();
-			ActorInfo unitType;
-			if (!self.World.Map.Rules.Actors.TryGetValue(utLower, out unitType))
-				throw new YamlException("Actors ruleset does not include the entry '{0}'".F(utLower));
+			if (!self.World.Map.Rules.Actors.TryGetValue(utLower, out var unitType))
+				throw new YamlException($"Actors ruleset does not include the entry '{utLower}'");
 
 			var altitude = unitType.TraitInfo<AircraftInfo>().CruiseAltitude.Length;
-			var dropRotation = WRot.FromFacing(dropFacing);
+			var dropRotation = WRot.FromYaw(facing.Value);
 			var delta = new WVec(0, -1024, 0).Rotate(dropRotation);
-			target = target + new WVec(0, 0, altitude);
+			target += new WVec(0, 0, altitude);
 			var startEdge = target - (self.World.Map.DistanceToEdge(target, -delta) + info.Cordon).Length * delta / 1024;
 			var finishEdge = target + (self.World.Map.DistanceToEdge(target, delta) + info.Cordon).Length * delta / 1024;
 
@@ -146,8 +137,12 @@ namespace OpenRA.Mods.Common.Traits
 				RemoveBeacon(beacon);
 
 				if (!aircraftInRange.Any(kv => kv.Value))
+				{
 					Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech",
 						info.ReinforcementsArrivedSpeechNotification, self.Owner.Faction.InternalName);
+
+					TextNotificationsManager.AddTransientLine(info.ReinforcementsArrivedTextNotification, self.Owner);
+				}
 
 				aircraftInRange[a] = true;
 			};
@@ -166,14 +161,41 @@ namespace OpenRA.Mods.Common.Traits
 				aircraftInRange[a] = false;
 
 				// Checking for attack range is not relevant here because
-				// aircraft may be shot down before entering. Thus we remove
-				// the camera and beacon only if the whole squad is dead.
-				if (aircraftInRange.All(kv => kv.Key.IsDead))
+				// aircraft may be shot down before entering the range.
+				// If at the map's edge, they may be removed from world before leaving.
+				if (aircraftInRange.All(kv => !kv.Key.IsInWorld))
 				{
 					RemoveCamera(camera);
 					RemoveBeacon(beacon);
 				}
 			};
+
+			// Create the actors immediately so they can be returned
+			for (var i = -info.SquadSize / 2; i <= info.SquadSize / 2; i++)
+			{
+				// Even-sized squads skip the lead plane
+				if (i == 0 && (info.SquadSize & 1) == 0)
+					continue;
+
+				// Includes the 90 degree rotation between body and world coordinates
+				var so = info.SquadOffset;
+				var spawnOffset = new WVec(i * so.Y, -Math.Abs(i) * so.X, 0).Rotate(dropRotation);
+
+				aircraft.Add(self.World.CreateActor(false, info.UnitType, new TypeDictionary
+				{
+					new CenterPositionInit(startEdge + spawnOffset),
+					new OwnerInit(self.Owner),
+					new FacingInit(facing.Value),
+				}));
+			}
+
+			foreach (var p in info.DropItems)
+			{
+				units.Add(self.World.CreateActor(false, p.ToLowerInvariant(), new TypeDictionary
+				{
+					new OwnerInit(self.Owner)
+				}));
+			}
 
 			self.World.AddFrameEndTask(w =>
 			{
@@ -183,6 +205,7 @@ namespace OpenRA.Mods.Common.Traits
 
 				var passengersPerPlane = (info.DropItems.Length + info.SquadSize - 1) / info.SquadSize;
 				var added = 0;
+				var j = 0;
 				for (var i = -info.SquadSize / 2; i <= info.SquadSize / 2; i++)
 				{
 					// Even-sized squads skip the lead plane
@@ -193,13 +216,8 @@ namespace OpenRA.Mods.Common.Traits
 					var so = info.SquadOffset;
 					var spawnOffset = new WVec(i * so.Y, -Math.Abs(i) * so.X, 0).Rotate(dropRotation);
 					var targetOffset = new WVec(i * so.Y, 0, 0).Rotate(dropRotation);
-
-					var a = w.CreateActor(info.UnitType, new TypeDictionary
-					{
-						new CenterPositionInit(startEdge + spawnOffset),
-						new OwnerInit(self.Owner),
-						new FacingInit(dropFacing),
-					});
+					var a = aircraft[j++];
+					w.Add(a);
 
 					var drop = a.Trait<ParaDrop>();
 					drop.SetLZ(w.Map.CellContaining(target + targetOffset), !info.AllowImpassableCells);
@@ -208,15 +226,9 @@ namespace OpenRA.Mods.Common.Traits
 					drop.OnRemovedFromWorld += onRemovedFromWorld;
 
 					var cargo = a.Trait<Cargo>();
-					foreach (var p in info.DropItems.Skip(added).Take(passengersPerPlane))
+					foreach (var unit in units.Skip(added).Take(passengersPerPlane))
 					{
-						var unit = self.World.CreateActor(false, p.ToLowerInvariant(), new TypeDictionary
-						{
-							new OwnerInit(self.Owner)
-						});
-
 						cargo.Load(a, unit);
-						units.Add(unit);
 						added++;
 					}
 
@@ -226,6 +238,10 @@ namespace OpenRA.Mods.Common.Traits
 					aircraftInRange.Add(a, false);
 					distanceTestActor = a;
 				}
+
+				// Dispose any unused units
+				for (var i = added; i < units.Count; i++)
+					units[i].Dispose();
 
 				if (Info.DisplayBeacon)
 				{
@@ -250,7 +266,7 @@ namespace OpenRA.Mods.Common.Traits
 				}
 			});
 
-			return units.ToArray();
+			return (aircraft.ToArray(), units.ToArray());
 		}
 
 		void RemoveCamera(Actor camera)
@@ -260,7 +276,6 @@ namespace OpenRA.Mods.Common.Traits
 
 			camera.QueueActivity(new Wait(info.CameraRemoveDelay));
 			camera.QueueActivity(new RemoveSelf());
-			camera = null;
 		}
 
 		void RemoveBeacon(Beacon beacon)
@@ -271,7 +286,6 @@ namespace OpenRA.Mods.Common.Traits
 			Self.World.AddFrameEndTask(w =>
 			{
 				w.Remove(beacon);
-				beacon = null;
 			});
 		}
 	}

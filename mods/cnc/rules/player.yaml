@@ -1,6 +1,10 @@
 ^BasePlayer:
 	AlwaysVisible:
 	Shroud:
+	PlayerResources:
+		ResourceValues:
+			Tiberium: 35
+			BlueTiberium: 60
 
 EditorPlayer:
 	Inherits: ^BasePlayer
@@ -10,6 +14,8 @@ Player:
 	PlaceBuilding:
 		NewOptionsNotification: NewOptions
 		CannotPlaceNotification: BuildingCannotPlaceAudio
+		NewOptionsTextNotification: New construction options.
+		CannotPlaceTextNotification: Cannot deploy here.
 	TechTree:
 	SupportPowerManager:
 	ScriptTriggers:
@@ -20,13 +26,18 @@ Player:
 	ConquestVictoryConditions:
 	PowerManager:
 		SpeechNotification: LowPower
+		TextNotification: Low power.
 	AllyRepair:
 	PlayerResources:
 		CashTickUpNotification: CashTickUp
 		CashTickDownNotification: CashTickDown
+		SelectableCash: 2500, 5000, 7500, 10000, 20000
+		DefaultCash: 7500
 	DeveloperMode:
-		CheckboxDisplayOrder: 8
+		CheckboxDisplayOrder: 9
 	BaseAttackNotifier:
+		TextNotification: Base under attack.
+		AllyTextNotification: Our ally is under attack.
 	Shroud:
 		FogCheckboxDisplayOrder: 3
 	LobbyPrerequisiteCheckbox@GLOBALFACTUNDEPLOY:
@@ -36,6 +47,13 @@ Player:
 		Enabled: True
 		DisplayOrder: 7
 		Prerequisites: global-factundeploy
+	LobbyPrerequisiteCheckbox@GLOBALC17STEALTH:
+		ID: C17-Stealth
+		Label: Stealth Deliveries
+		Description: Nod's delivery plane is cloaked
+		Enabled: False
+		DisplayOrder: 8
+		Prerequisites: global-C17-stealth
 	PlayerStatistics:
 	FrozenActorLayer:
 	PlaceBeacon:
@@ -57,6 +75,7 @@ Player:
 		Id: unrestricted
 	GrantConditionOnPrerequisiteManager:
 	ResourceStorageWarning:
+		TextNotification: Silos needed.
 	PlayerExperience:
-	ConditionManager:
 	GameSaveViewportManager:
+	PlayerRadarTerrain:

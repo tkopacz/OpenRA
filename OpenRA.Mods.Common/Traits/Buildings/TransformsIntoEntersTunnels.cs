@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,12 +9,9 @@
  */
 #endregion
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using OpenRA.Activities;
 using OpenRA.Mods.Common.Activities;
-using OpenRA.Mods.Common.Orders;
 using OpenRA.Primitives;
 using OpenRA.Traits;
 
@@ -23,8 +20,16 @@ namespace OpenRA.Mods.Common.Traits
 	[Desc("Add to a building to expose a move cursor that triggers Transforms and issues an enter tunnel order to the transformed actor.")]
 	public class TransformsIntoEntersTunnelsInfo : ConditionalTraitInfo, Requires<TransformsInfo>
 	{
+		[CursorReference]
+		[Desc("Cursor to display when able to enter target tunnel.")]
 		public readonly string EnterCursor = "enter";
+
+		[CursorReference]
+		[Desc("Cursor to display when unable to enter target tunnel.")]
 		public readonly string EnterBlockedCursor = "enter-blocked";
+
+		[Desc("Color to use for the target line while in tunnels.")]
+		public readonly Color TargetLineColor = Color.Green;
 
 		[VoiceReference]
 		public readonly string Voice = "Action";
@@ -32,15 +37,19 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Require the force-move modifier to display the enter cursor.")]
 		public readonly bool RequiresForceMove = false;
 
-		public override object Create(ActorInitializer init) { return new TransformsIntoEntersTunnels(this); }
+		public override object Create(ActorInitializer init) { return new TransformsIntoEntersTunnels(init.Self, this); }
 	}
 
 	public class TransformsIntoEntersTunnels : ConditionalTrait<TransformsIntoEntersTunnelsInfo>, IIssueOrder, IResolveOrder, IOrderVoice
 	{
+		readonly Actor self;
 		Transforms[] transforms;
 
-		public TransformsIntoEntersTunnels(TransformsIntoEntersTunnelsInfo info)
-			: base(info) { }
+		public TransformsIntoEntersTunnels(Actor self, TransformsIntoEntersTunnelsInfo info)
+			: base(info)
+		{
+			this.self = self;
+		}
 
 		protected override void Created(Actor self)
 		{
@@ -53,11 +62,21 @@ namespace OpenRA.Mods.Common.Traits
 			get
 			{
 				if (!IsTraitDisabled)
-					yield return new EntersTunnels.EnterTunnelOrderTargeter(Info.EnterCursor, Info.EnterBlockedCursor, () => Info.RequiresForceMove);
+					yield return new EntersTunnels.EnterTunnelOrderTargeter(Info.EnterCursor, Info.EnterBlockedCursor, CanEnterTunnel, UseEnterCursor);
 			}
 		}
 
-		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		bool CanEnterTunnel(Actor target, TargetModifiers modifiers)
+		{
+			return !Info.RequiresForceMove || modifiers.HasModifier(TargetModifiers.ForceMove);
+		}
+
+		bool UseEnterCursor(Actor target)
+		{
+			return self.CurrentActivity is Transform || transforms.Any(t => !t.IsTraitDisabled && !t.IsTraitPaused);
+		}
+
+		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order.OrderID == "EnterTunnel")
 				return new Order(order.OrderID, self, target, queued) { SuppressVisualFeedback = true };
@@ -79,13 +98,17 @@ namespace OpenRA.Mods.Common.Traits
 			if (transform == null && currentTransform == null)
 				return;
 
-			self.SetTargetLine(order.Target, Color.Green);
+			// Manually manage the inner activity queue
+			var activity = currentTransform ?? transform.GetTransformActivity();
+			if (!order.Queued)
+				activity.NextActivity?.Cancel(self);
 
-			var activity = currentTransform ?? transform.GetTransformActivity(self);
-			activity.Queue(self, new IssueOrderAfterTransform(order.OrderString, order.Target));
+			activity.Queue(new IssueOrderAfterTransform(order.OrderString, order.Target, Info.TargetLineColor));
 
 			if (currentTransform == null)
 				self.QueueActivity(order.Queued, activity);
+
+			self.ShowTargetLines();
 		}
 
 		string IOrderVoice.VoicePhraseForOrder(Actor self, Order order)

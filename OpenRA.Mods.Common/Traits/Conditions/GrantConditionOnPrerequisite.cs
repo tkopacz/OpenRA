@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,13 +9,13 @@
  */
 #endregion
 
-using System.Linq;
+using System;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("Grants a condition to the actor this is attached to when prerequisites are available.")]
-	public class GrantConditionOnPrerequisiteInfo : ITraitInfo
+	public class GrantConditionOnPrerequisiteInfo : TraitInfo
 	{
 		[FieldLoader.Require]
 		[GrantedConditionReference]
@@ -24,9 +24,9 @@ namespace OpenRA.Mods.Common.Traits
 
 		[FieldLoader.Require]
 		[Desc("List of required prerequisites.")]
-		public readonly string[] Prerequisites = { };
+		public readonly string[] Prerequisites = Array.Empty<string>();
 
-		public object Create(ActorInitializer init) { return new GrantConditionOnPrerequisite(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new GrantConditionOnPrerequisite(this); }
 	}
 
 	public class GrantConditionOnPrerequisite : INotifyCreated, INotifyAddedToWorld, INotifyRemovedFromWorld, INotifyOwnerChanged
@@ -34,36 +34,28 @@ namespace OpenRA.Mods.Common.Traits
 		readonly GrantConditionOnPrerequisiteInfo info;
 
 		bool wasAvailable;
-		ConditionManager conditionManager;
 		GrantConditionOnPrerequisiteManager globalManager;
-		int conditionToken = ConditionManager.InvalidConditionToken;
+		int conditionToken = Actor.InvalidConditionToken;
 
-		public GrantConditionOnPrerequisite(Actor self, GrantConditionOnPrerequisiteInfo info)
+		public GrantConditionOnPrerequisite(GrantConditionOnPrerequisiteInfo info)
 		{
 			this.info = info;
 		}
 
 		void INotifyCreated.Created(Actor self)
 		{
-			// Special case handling is required for the Player actor.
-			// Created is called before Player.PlayerActor is assigned,
-			// so we must query other player traits from self, knowing that
-			// it refers to the same actor as self.Owner.PlayerActor
-			var playerActor = self.Info.Name == "player" ? self : self.Owner.PlayerActor;
-
-			globalManager = playerActor.Trait<GrantConditionOnPrerequisiteManager>();
-			conditionManager = self.TraitOrDefault<ConditionManager>();
+			globalManager = self.Owner.PlayerActor.Trait<GrantConditionOnPrerequisiteManager>();
 		}
 
 		void INotifyAddedToWorld.AddedToWorld(Actor self)
 		{
-			if (info.Prerequisites.Any())
+			if (info.Prerequisites.Length > 0)
 				globalManager.Register(self, this, info.Prerequisites);
 		}
 
 		void INotifyRemovedFromWorld.RemovedFromWorld(Actor self)
 		{
-			if (info.Prerequisites.Any())
+			if (info.Prerequisites.Length > 0)
 				globalManager.Unregister(self, this, info.Prerequisites);
 		}
 
@@ -74,13 +66,13 @@ namespace OpenRA.Mods.Common.Traits
 
 		public void PrerequisitesUpdated(Actor self, bool available)
 		{
-			if (available == wasAvailable || conditionManager == null)
+			if (available == wasAvailable)
 				return;
 
-			if (available && conditionToken == ConditionManager.InvalidConditionToken)
-				conditionToken = conditionManager.GrantCondition(self, info.Condition);
-			else if (!available && conditionToken != ConditionManager.InvalidConditionToken)
-				conditionToken = conditionManager.RevokeCondition(self, conditionToken);
+			if (available && conditionToken == Actor.InvalidConditionToken)
+				conditionToken = self.GrantCondition(info.Condition);
+			else if (!available && conditionToken != Actor.InvalidConditionToken)
+				conditionToken = self.RevokeCondition(conditionToken);
 
 			wasAvailable = available;
 		}

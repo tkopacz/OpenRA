@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -13,46 +13,45 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Graphics;
+using OpenRA.Mods.Common.Widgets;
+using OpenRA.Orders;
 using OpenRA.Traits;
+using OpenRA.Widgets;
 
 namespace OpenRA.Mods.Common.Traits
 {
 	public class SelectDirectionalTarget : IOrderGenerator
 	{
+		const int MinDragThreshold = 20;
+		const int MaxDragThreshold = 75;
+
 		readonly string order;
 		readonly SupportPowerManager manager;
 		readonly string cursor;
-		readonly string targetPlaceholderCursorPalette;
 		readonly string directionArrowPalette;
-		readonly Animation targetCursor;
 
 		readonly string[] arrows = { "arrow-t", "arrow-tl", "arrow-l", "arrow-bl", "arrow-b", "arrow-br", "arrow-r", "arrow-tr" };
 		readonly Arrow[] directionArrows;
 
 		CPos targetCell;
 		int2 targetLocation;
-		int2 dragLocation;
+		float2 dragDirection;
 		bool activated;
 		bool dragStarted;
-		bool hideMouse = true;
 		Arrow currentArrow;
+		readonly MouseAttachmentWidget mouseAttachment;
 
-		public SelectDirectionalTarget(World world, string order, SupportPowerManager manager, string cursor, string targetPlaceholderCursorAnimation,
-			string directionArrowAnimation, string targetPlaceholderCursorPalette, string directionArrowPalette)
+		public SelectDirectionalTarget(World world, string order, SupportPowerManager manager, string cursor,
+			string directionArrowAnimation, string directionArrowPalette)
 		{
 			this.order = order;
 			this.manager = manager;
 			this.cursor = cursor;
-			this.targetPlaceholderCursorPalette = targetPlaceholderCursorPalette;
+
 			this.directionArrowPalette = directionArrowPalette;
 
-			targetCursor = new Animation(world, targetPlaceholderCursorAnimation);
-			targetCursor.PlayRepeating("cursor");
-
-			for (var i = 0; i < Game.Cursor.Frame; i++)
-				targetCursor.Tick();
-
 			directionArrows = LoadArrows(directionArrowAnimation, world, arrows.Length);
+			mouseAttachment = Ui.Root.Get<MouseAttachmentWidget>("MOUSE_ATTATCHMENT");
 		}
 
 		IEnumerable<Order> IOrderGenerator.Order(World world, CPos cell, int2 worldPixel, MouseInput mi)
@@ -65,11 +64,12 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (mi.Button == MouseButton.Left && mi.Event == MouseInputEvent.Down)
 			{
-				if (!activated)
+				if (!activated && world.Map.Contains(cell))
 				{
 					targetCell = cell;
 					targetLocation = mi.Location;
 					activated = true;
+					Game.Cursor.Lock();
 				}
 
 				yield break;
@@ -80,10 +80,15 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (mi.Event == MouseInputEvent.Move)
 			{
-				dragLocation = mi.Location;
+				dragDirection += mi.Delta;
 
-				var angle = AngleBetween(targetLocation, dragLocation);
+				var angle = AngleOf(dragDirection);
+				if (dragDirection.Length > MaxDragThreshold)
+					dragDirection = -MaxDragThreshold * float2.FromAngle((float)(angle * (Math.PI / 180)));
+
 				currentArrow = GetArrow(angle);
+
+				mouseAttachment.SetAttachment(targetLocation, currentArrow.Sprite, directionArrowPalette);
 				dragStarted = true;
 			}
 
@@ -101,59 +106,40 @@ namespace OpenRA.Mods.Common.Traits
 
 		void IOrderGenerator.Tick(World world)
 		{
-			targetCursor.Tick();
-
 			// Cancel the OG if we can't use the power
-			if (!manager.Powers.ContainsKey(order))
+			if (!manager.Powers.TryGetValue(order, out var p) || !p.Active || !p.Ready)
 				world.CancelInputMode();
 		}
 
-		bool IsOutsideDragZone
-		{
-			get { return dragStarted && (dragLocation - targetLocation).Length > 20; }
-		}
+		void IOrderGenerator.SelectionChanged(World world, IEnumerable<Actor> selected) { }
+
+		bool IsOutsideDragZone => dragStarted && dragDirection.Length > MinDragThreshold;
 
 		IEnumerable<IRenderable> IOrderGenerator.Render(WorldRenderer wr, World world) { yield break; }
 
-		IEnumerable<IRenderable> IOrderGenerator.RenderAboveShroud(WorldRenderer wr, World world)
+		IEnumerable<IRenderable> IOrderGenerator.RenderAboveShroud(WorldRenderer wr, World world) { yield break; }
+		IEnumerable<IRenderable> IOrderGenerator.RenderAnnotations(WorldRenderer wr, World world) { yield break; }
+
+		string IOrderGenerator.GetCursor(World world, CPos cell, int2 worldPixel, MouseInput mi)
 		{
-			if (!activated)
-				return Enumerable.Empty<IRenderable>();
-
-			var targetPalette = wr.Palette(targetPlaceholderCursorPalette);
-
-			var location = activated ? targetLocation : Viewport.LastMousePos;
-			var worldPx = wr.Viewport.ViewToWorldPx(location);
-			var worldPos = wr.ProjectedPosition(worldPx);
-			var renderables = new List<IRenderable>(targetCursor.Render(worldPos, WVec.Zero, -511, targetPalette, 1 / wr.Viewport.Zoom));
-
-			if (IsOutsideDragZone)
-			{
-				var directionPalette = wr.Palette(directionArrowPalette);
-				renderables.Add(new SpriteRenderable(currentArrow.Sprite, worldPos, WVec.Zero, -511, directionPalette, 1 / wr.Viewport.Zoom, true));
-			}
-
-			if (hideMouse)
-			{
-				hideMouse = false;
-				Game.RunAfterTick(() => Game.HideCursor = true);
-			}
-
-			return renderables;
+			return world.Map.Contains(cell) ? cursor : "generic-blocked";
 		}
 
-		string IOrderGenerator.GetCursor(World world, CPos cell, int2 worldPixel, MouseInput mi) { return cursor; }
+		bool IOrderGenerator.HandleKeyPress(KeyInput e) { return false; }
 
 		void IOrderGenerator.Deactivate()
 		{
 			if (activated)
-				Game.HideCursor = false;
+			{
+				mouseAttachment.Reset();
+				Game.Cursor.Unlock();
+			}
 		}
 
 		// Starting at (0, -1) and rotating in CCW
-		static double AngleBetween(int2 p1, int2 p2)
+		static double AngleOf(float2 delta)
 		{
-			var radian = Math.Atan2(p2.Y - p1.Y, p2.X - p1.X);
+			var radian = Math.Atan2(delta.Y, delta.X);
 			var d = radian * (180 / Math.PI);
 			if (d < 0.0)
 				d += 360.0;
@@ -192,9 +178,9 @@ namespace OpenRA.Mods.Common.Traits
 
 		class Arrow
 		{
-			public Sprite Sprite { get; private set; }
-			public double EndAngle { get; private set; }
-			public WAngle Direction { get; private set; }
+			public Sprite Sprite { get; }
+			public double EndAngle { get; }
+			public WAngle Direction { get; }
 
 			public Arrow(Sprite sprite, double endAngle, WAngle direction)
 			{

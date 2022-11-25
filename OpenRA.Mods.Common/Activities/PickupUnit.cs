@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,6 +9,7 @@
  */
 #endregion
 
+using System.Collections.Generic;
 using OpenRA.Activities;
 using OpenRA.Mods.Common.Traits;
 using OpenRA.Primitives;
@@ -19,143 +20,147 @@ namespace OpenRA.Mods.Common.Activities
 	public class PickupUnit : Activity
 	{
 		readonly Actor cargo;
-		readonly IMove movement;
-
 		readonly Carryall carryall;
-		readonly IFacing carryallFacing;
-
 		readonly Carryable carryable;
 		readonly IFacing carryableFacing;
 		readonly BodyOrientation carryableBody;
 
 		readonly int delay;
+		readonly Color? targetLineColor;
 
-		enum PickupState { Intercept, LockCarryable, MoveToCarryable, Turn, Land, Wait, Pickup }
+		// TODO: Expose this to yaml
+		readonly WDist targetLockRange = WDist.FromCells(4);
 
-		PickupState state;
+		enum PickupState { Intercept, LockCarryable, Pickup }
+		PickupState state = PickupState.Intercept;
 
-		public PickupUnit(Actor self, Actor cargo, int delay)
+		public PickupUnit(Actor self, Actor cargo, int delay, Color? targetLineColor)
 		{
 			this.cargo = cargo;
 			this.delay = delay;
+			this.targetLineColor = targetLineColor;
 			carryable = cargo.Trait<Carryable>();
 			carryableFacing = cargo.Trait<IFacing>();
 			carryableBody = cargo.Trait<BodyOrientation>();
 
-			movement = self.Trait<IMove>();
 			carryall = self.Trait<Carryall>();
-			carryallFacing = self.Trait<IFacing>();
 
-			state = PickupState.Intercept;
+			ChildHasPriority = false;
 		}
 
 		protected override void OnFirstRun(Actor self)
 		{
-			carryall.ReserveCarryable(self, cargo);
+			// The cargo might have become invalid while we were moving towards it.
+			if (cargo.IsDead || carryable.IsTraitDisabled || !cargo.AppearsFriendlyTo(self))
+				return;
+
+			if (carryall.ReserveCarryable(self, cargo))
+			{
+				// Fly to the target and wait for it to be locked for pickup
+				// These activities will be cancelled and replaced by Land once the target has been locked
+				QueueChild(new Fly(self, Target.FromActor(cargo)));
+				QueueChild(new FlyIdle(self, idleTurn: false));
+			}
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
-			if (ChildActivity != null)
+			if (cargo != carryall.Carryable)
+				return true;
+
+			if (IsCanceling)
 			{
-				ChildActivity = ActivityUtils.RunActivity(self, ChildActivity);
-				if (ChildActivity != null)
-					return this;
+				if (carryall.State == Carryall.CarryallState.Reserved)
+					carryall.UnreserveCarryable(self);
+
+				// Make sure we run the TakeOff activity if we are / have landed
+				if (self.Trait<Aircraft>().HasInfluence())
+				{
+					ChildHasPriority = true;
+					IsInterruptible = false;
+					QueueChild(new TakeOff(self));
+					return false;
+				}
+
+				return true;
 			}
 
-			if (cargo != carryall.Carryable)
-				return NextActivity;
-
-			if (cargo.IsDead || IsCanceling || carryable.IsTraitDisabled || !cargo.AppearsFriendlyTo(self))
+			if (cargo.IsDead || carryable.IsTraitDisabled || !cargo.AppearsFriendlyTo(self))
 			{
 				carryall.UnreserveCarryable(self);
-				return NextActivity;
+				return true;
 			}
 
-			if (carryall.State != Carryall.CarryallState.Reserved)
-				return NextActivity;
+			// Wait until we are near the target before we try to lock it
+			var distSq = (cargo.CenterPosition - self.CenterPosition).HorizontalLengthSquared;
+			if (state == PickupState.Intercept && distSq <= targetLockRange.LengthSquared)
+				state = PickupState.LockCarryable;
 
-			switch (state)
+			if (state == PickupState.LockCarryable)
 			{
-				case PickupState.Intercept:
-					QueueChild(self, movement.MoveWithinRange(Target.FromActor(cargo), WDist.FromCells(4), targetLineColor: Color.Yellow), true);
-					state = PickupState.LockCarryable;
-					return this;
-
-				case PickupState.LockCarryable:
-					if (!carryable.LockForPickup(cargo, self))
-						Cancel(self);
-
-					state = PickupState.MoveToCarryable;
-					return this;
-
-				case PickupState.MoveToCarryable:
+				var lockResponse = carryable.LockForPickup(cargo, self);
+				if (lockResponse == LockResponse.Failed)
+					Cancel(self);
+				else if (lockResponse == LockResponse.Success)
 				{
-					// Line up with the attachment point
-					var localOffset = carryall.OffsetForCarryable(self, cargo).Rotate(carryableBody.QuantizeOrientation(self, cargo.Orientation));
-					var targetPosition = cargo.CenterPosition - carryableBody.LocalToWorld(localOffset);
-					if ((self.CenterPosition - targetPosition).HorizontalLengthSquared != 0)
-					{
-						QueueChild(self, new Fly(self, Target.FromPos(targetPosition)), true);
-						return this;
-					}
+					// Pickup position and facing are now known - swap the fly/wait activity with Land
+					ChildActivity.Cancel(self);
 
-					state = PickupState.Turn;
-					return this;
-				}
+					var localOffset = carryall.OffsetForCarryable(self, cargo).Rotate(carryableBody.QuantizeOrientation(cargo.Orientation));
+					QueueChild(new Land(self, Target.FromActor(cargo), -carryableBody.LocalToWorld(localOffset), carryableFacing.Facing));
 
-				case PickupState.Turn:
-					if (carryallFacing.Facing != carryableFacing.Facing)
-					{
-						QueueChild(self, new Turn(self, carryableFacing.Facing), true);
-						return this;
-					}
+					// Pause briefly before attachment for visual effect
+					if (delay > 0)
+						QueueChild(new Wait(delay, false));
 
-					state = PickupState.Land;
-					return this;
-
-				case PickupState.Land:
-				{
-					var localOffset = carryall.OffsetForCarryable(self, cargo).Rotate(carryableBody.QuantizeOrientation(self, cargo.Orientation));
-					var targetPosition = cargo.CenterPosition - carryableBody.LocalToWorld(localOffset);
-					if ((self.CenterPosition - targetPosition).HorizontalLengthSquared != 0 || carryallFacing.Facing != carryableFacing.Facing)
-					{
-						state = PickupState.MoveToCarryable;
-						return this;
-					}
-
-					if (targetPosition.Z != self.CenterPosition.Z)
-					{
-						QueueChild(self, new Land(self, Target.FromActor(cargo), -carryableBody.LocalToWorld(localOffset)));
-						return this;
-					}
-
-					state = delay > 0 ? PickupState.Wait : PickupState.Pickup;
-					return this;
-				}
-
-				case PickupState.Wait:
-					QueueChild(self, new Wait(delay, false), true);
-					state = PickupState.Pickup;
-					return this;
-
-				case PickupState.Pickup:
 					// Remove our carryable from world
-					Attach(self);
-					return this;
+					QueueChild(new AttachUnit(self, cargo));
+					QueueChild(new TakeOff(self));
+
+					state = PickupState.Pickup;
+				}
 			}
 
-			return NextActivity;
+			// We don't want to allow TakeOff to be cancelled
+			if (ChildActivity is TakeOff)
+				ChildHasPriority = true;
+
+			// Return once we are in the pickup state and the pickup activities have completed
+			return TickChild(self) && state == PickupState.Pickup;
 		}
 
-		void Attach(Actor self)
+		public override IEnumerable<TargetLineNode> TargetLineNodes(Actor self)
 		{
-			self.World.AddFrameEndTask(w =>
+			if (targetLineColor != null)
+				yield return new TargetLineNode(Target.FromActor(cargo), targetLineColor.Value);
+		}
+
+		class AttachUnit : Activity
+		{
+			readonly Actor cargo;
+			readonly Carryable carryable;
+			readonly Carryall carryall;
+
+			public AttachUnit(Actor self, Actor cargo)
 			{
-				cargo.World.Remove(cargo);
-				carryable.Attached(cargo);
-				carryall.AttachCarryable(self, cargo);
-			});
+				this.cargo = cargo;
+				carryable = cargo.Trait<Carryable>();
+				carryall = self.Trait<Carryall>();
+			}
+
+			protected override void OnFirstRun(Actor self)
+			{
+				// The cargo might have become invalid while we were moving towards it.
+				if (cargo == null || cargo.IsDead || carryable.IsTraitDisabled || !cargo.AppearsFriendlyTo(self))
+					return;
+
+				self.World.AddFrameEndTask(w =>
+				{
+					cargo.World.Remove(cargo);
+					carryable.Attached(cargo);
+					carryall.AttachCarryable(self, cargo);
+				});
+			}
 		}
 	}
 }

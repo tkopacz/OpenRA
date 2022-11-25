@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -15,7 +15,7 @@ using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
-	public class RearmableInfo : ITraitInfo
+	public class RearmableInfo : TraitInfo
 	{
 		[ActorReference]
 		[FieldLoader.Require]
@@ -25,10 +25,10 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Name(s) of AmmoPool(s) that use this trait to rearm.")]
 		public readonly HashSet<string> AmmoPools = new HashSet<string> { "primary" };
 
-		public object Create(ActorInitializer init) { return new Rearmable(this); }
+		public override object Create(ActorInitializer init) { return new Rearmable(this); }
 	}
 
-	public class Rearmable : INotifyCreated
+	public class Rearmable : INotifyCreated, INotifyResupply
 	{
 		public readonly RearmableInfo Info;
 
@@ -43,5 +43,18 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			RearmableAmmoPools = self.TraitsImplementing<AmmoPool>().Where(p => Info.AmmoPools.Contains(p.Info.Name)).ToArray();
 		}
+
+		void INotifyResupply.BeforeResupply(Actor self, Actor target, ResupplyType types)
+		{
+			if (!types.HasFlag(ResupplyType.Rearm))
+				return;
+
+			// Reset the ReloadDelay to avoid any issues with early cancellation
+			// from previous reload attempts (explicit order, host building died, etc).
+			foreach (var pool in RearmableAmmoPools)
+				pool.RemainingTicks = pool.Info.ReloadDelay;
+		}
+
+		void INotifyResupply.ResupplyTick(Actor self, Actor target, ResupplyType types) { }
 	}
 }

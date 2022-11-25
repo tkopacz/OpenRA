@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -42,7 +42,7 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly int DamageThreshold = 0;
 
 		[Desc("DeathType(s) that trigger the explosion. Leave empty to always trigger an explosion.")]
-		public readonly BitSet<DamageType> DeathTypes = default(BitSet<DamageType>);
+		public readonly BitSet<DamageType> DeathTypes = default;
 
 		[Desc("Who is counted as source of damage for explosion.",
 			"Possible values are Self and Killer.")]
@@ -52,6 +52,9 @@ namespace OpenRA.Mods.Common.Traits
 			"Footprint (explosion on each occupied cell).")]
 		public readonly ExplosionType Type = ExplosionType.CenterPosition;
 
+		[Desc("Offset of the explosion from the center of the exploding actor (or cell).")]
+		public readonly WVec Offset = WVec.Zero;
+
 		public WeaponInfo WeaponInfo { get; private set; }
 		public WeaponInfo EmptyWeaponInfo { get; private set; }
 
@@ -60,19 +63,17 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			if (!string.IsNullOrEmpty(Weapon))
 			{
-				WeaponInfo weapon;
 				var weaponToLower = Weapon.ToLowerInvariant();
-				if (!rules.Weapons.TryGetValue(weaponToLower, out weapon))
-					throw new YamlException("Weapons Ruleset does not contain an entry '{0}'".F(weaponToLower));
+				if (!rules.Weapons.TryGetValue(weaponToLower, out var weapon))
+					throw new YamlException($"Weapons Ruleset does not contain an entry '{weaponToLower}'");
 				WeaponInfo = weapon;
 			}
 
 			if (!string.IsNullOrEmpty(EmptyWeapon))
 			{
-				WeaponInfo emptyWeapon;
 				var emptyWeaponToLower = EmptyWeapon.ToLowerInvariant();
-				if (!rules.Weapons.TryGetValue(emptyWeaponToLower, out emptyWeapon))
-					throw new YamlException("Weapons Ruleset does not contain an entry '{0}'".F(emptyWeaponToLower));
+				if (!rules.Weapons.TryGetValue(emptyWeaponToLower, out var emptyWeapon))
+					throw new YamlException($"Weapons Ruleset does not contain an entry '{emptyWeaponToLower}'");
 				EmptyWeaponInfo = emptyWeapon;
 			}
 
@@ -80,10 +81,11 @@ namespace OpenRA.Mods.Common.Traits
 		}
 	}
 
-	public class Explodes : ConditionalTrait<ExplodesInfo>, INotifyKilled, INotifyDamage, INotifyCreated
+	public class Explodes : ConditionalTrait<ExplodesInfo>, INotifyKilled, INotifyDamage
 	{
 		readonly IHealth health;
 		BuildingInfo buildingInfo;
+		Armament[] armaments;
 
 		public Explodes(ExplodesInfo info, Actor self)
 			: base(info)
@@ -91,9 +93,12 @@ namespace OpenRA.Mods.Common.Traits
 			health = self.Trait<IHealth>();
 		}
 
-		void INotifyCreated.Created(Actor self)
+		protected override void Created(Actor self)
 		{
 			buildingInfo = self.Info.TraitInfoOrDefault<BuildingInfo>();
+			armaments = self.TraitsImplementing<Armament>().ToArray();
+
+			base.Created(self);
 		}
 
 		void INotifyKilled.Killed(Actor self, AttackInfo e)
@@ -112,40 +117,40 @@ namespace OpenRA.Mods.Common.Traits
 				return;
 
 			var source = Info.DamageSource == DamageSource.Self ? self : e.Attacker;
-			if (weapon.Report != null && weapon.Report.Any())
+			if (weapon.Report != null && weapon.Report.Length > 0)
 				Game.Sound.Play(SoundType.World, weapon.Report, self.World, self.CenterPosition);
 
 			if (Info.Type == ExplosionType.Footprint && buildingInfo != null)
 			{
-				var cells = buildingInfo.UnpathableTiles(self.Location);
+				var cells = buildingInfo.OccupiedTiles(self.Location);
 				foreach (var c in cells)
-					weapon.Impact(Target.FromPos(self.World.Map.CenterOfCell(c)), source, Enumerable.Empty<int>());
+					weapon.Impact(Target.FromPos(self.World.Map.CenterOfCell(c) + Info.Offset), source);
 
 				return;
 			}
 
 			// Use .FromPos since this actor is killed. Cannot use Target.FromActor
-			weapon.Impact(Target.FromPos(self.CenterPosition), source, Enumerable.Empty<int>());
+			weapon.Impact(Target.FromPos(self.CenterPosition + Info.Offset), source);
 		}
 
 		WeaponInfo ChooseWeaponForExplosion(Actor self)
 		{
-			var armaments = self.TraitsImplementing<Armament>();
-			if (!armaments.Any())
+			if (armaments.Length == 0)
 				return Info.WeaponInfo;
+			else if (self.World.SharedRandom.Next(100) > Info.LoadedChance)
+				return Info.EmptyWeaponInfo;
 
-			// TODO: EmptyWeapon should be removed in favour of conditions
-			var shouldExplode = !armaments.All(a => a.IsReloading);
-			var useFullExplosion = self.World.SharedRandom.Next(100) <= Info.LoadedChance;
-			return (shouldExplode && useFullExplosion) ? Info.WeaponInfo : Info.EmptyWeaponInfo;
+			// PERF: Avoid LINQ
+			foreach (var a in armaments)
+				if (!a.IsReloading)
+					return Info.WeaponInfo;
+
+			return Info.EmptyWeaponInfo;
 		}
 
 		void INotifyDamage.Damaged(Actor self, AttackInfo e)
 		{
-			if (IsTraitDisabled || !self.IsInWorld)
-				return;
-
-			if (Info.DamageThreshold == 0)
+			if (Info.DamageThreshold == 0 || IsTraitDisabled || !self.IsInWorld)
 				return;
 
 			if (!Info.DeathTypes.IsEmpty && !e.Damage.DamageTypes.Overlaps(Info.DeathTypes))
@@ -154,7 +159,7 @@ namespace OpenRA.Mods.Common.Traits
 			// Cast to long to avoid overflow when multiplying by the health
 			var source = Info.DamageSource == DamageSource.Self ? self : e.Attacker;
 			if (health.HP * 100L < Info.DamageThreshold * (long)health.MaxHP)
-				self.World.AddFrameEndTask(w => self.Kill(source));
+				self.World.AddFrameEndTask(w => self.Kill(source, e.Damage.DamageTypes));
 		}
 	}
 }

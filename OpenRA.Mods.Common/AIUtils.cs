@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -18,7 +18,7 @@ namespace OpenRA.Mods.Common
 {
 	public enum BuildingType { Building, Defense, Refinery }
 
-	public enum WaterCheck { NotChecked, EnoughWater, NotEnoughWater }
+	public enum WaterCheck { NotChecked, EnoughWater, NotEnoughWater, DontCheck }
 
 	public static class AIUtils
 	{
@@ -30,7 +30,7 @@ namespace OpenRA.Mods.Common
 			return cells.Select(a => map.FindTilesInCircle(a.Location, radius)
 				.Count(c => map.Contains(c) && terrainTypes.Contains(map.GetTerrainInfo(c).Type) &&
 					Util.AdjacentCells(world, Target.FromCell(world, c))
-						.All(ac => terrainTypes.Contains(map.GetTerrainInfo(ac).Type))))
+						.All(ac => map.Contains(ac) && terrainTypes.Contains(map.GetTerrainInfo(ac).Type))))
 							.Any(availableCells => availableCells > 0);
 		}
 
@@ -65,7 +65,7 @@ namespace OpenRA.Mods.Common
 
 		public static List<Actor> FindEnemiesByCommonName(HashSet<string> commonNames, Player player)
 		{
-			return player.World.Actors.Where(a => !a.IsDead && player.Stances[a.Owner] == Stance.Enemy &&
+			return player.World.Actors.Where(a => !a.IsDead && player.RelationshipWith(a.Owner) == PlayerRelationship.Enemy &&
 				commonNames.Contains(a.Info.Name)).ToList();
 		}
 
@@ -77,7 +77,7 @@ namespace OpenRA.Mods.Common
 		public static void BotDebug(string s, params object[] args)
 		{
 			if (Game.Settings.Debug.BotDebug)
-				Game.Debug(s, args);
+				TextNotificationsManager.Debug(s, args);
 		}
 	}
 }

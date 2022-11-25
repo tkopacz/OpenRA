@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -18,7 +18,7 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("This actor's experience increases when it has killed a GivesExperience actor.")]
-	public class GainsExperienceInfo : ITraitInfo
+	public class GainsExperienceInfo : TraitInfo
 	{
 		[FieldLoader.Require]
 		[Desc("Condition to grant at each level.",
@@ -27,13 +27,13 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly Dictionary<int, string> Conditions = null;
 
 		[GrantedConditionReference]
-		public IEnumerable<string> LinterConditions { get { return Conditions.Values; } }
+		public IEnumerable<string> LinterConditions => Conditions.Values;
 
 		[Desc("Image for the level up sprite.")]
 		public readonly string LevelUpImage = null;
 
-		[SequenceReference("Image")]
-		[Desc("Sequence for the level up sprite. Needs to be present on Image.")]
+		[SequenceReference(nameof(LevelUpImage), allowNullImage: true)]
+		[Desc("Sequence for the level up sprite. Needs to be present on LevelUpImage.")]
 		public readonly string LevelUpSequence = "levelup";
 
 		[PaletteReference]
@@ -49,21 +49,22 @@ namespace OpenRA.Mods.Common.Traits
 		[NotificationReference("Sounds")]
 		public readonly string LevelUpNotification = null;
 
-		public object Create(ActorInitializer init) { return new GainsExperience(init, this); }
+		public readonly string LevelUpTextNotification = null;
+
+		public override object Create(ActorInitializer init) { return new GainsExperience(init, this); }
 	}
 
-	public class GainsExperience : INotifyCreated, ISync, IResolveOrder
+	public class GainsExperience : INotifyCreated, ISync, IResolveOrder, ITransformActorInitModifier
 	{
 		readonly Actor self;
 		readonly GainsExperienceInfo info;
 		readonly int initialExperience;
 
-		readonly List<Pair<int, string>> nextLevel = new List<Pair<int, string>>();
-		ConditionManager conditionManager;
+		readonly List<(int RequiredExperience, string Condition)> nextLevel = new List<(int, string)>();
 
 		// Stored as a percentage of our value
 		[Sync]
-		int experience = 0;
+		public int Experience { get; private set; }
 
 		[Sync]
 		public int Level { get; private set; }
@@ -74,10 +75,9 @@ namespace OpenRA.Mods.Common.Traits
 			self = init.Self;
 			this.info = info;
 
+			Experience = 0;
 			MaxLevel = info.Conditions.Count;
-
-			if (init.Contains<ExperienceInit>())
-				initialExperience = init.Get<ExperienceInit, int>();
+			initialExperience = init.GetValue<ExperienceInit, int>(info, 0);
 		}
 
 		void INotifyCreated.Created(Actor self)
@@ -85,38 +85,44 @@ namespace OpenRA.Mods.Common.Traits
 			var valued = self.Info.TraitInfoOrDefault<ValuedInfo>();
 			var requiredExperience = info.ExperienceModifier < 0 ? (valued != null ? valued.Cost : 1) : info.ExperienceModifier;
 			foreach (var kv in info.Conditions)
-				nextLevel.Add(Pair.New(kv.Key * requiredExperience, kv.Value));
+				nextLevel.Add((kv.Key * requiredExperience, kv.Value));
 
-			conditionManager = self.TraitOrDefault<ConditionManager>();
 			if (initialExperience > 0)
 				GiveExperience(initialExperience, info.SuppressLevelupAnimation);
 		}
 
-		public bool CanGainLevel { get { return Level < MaxLevel; } }
+		public bool CanGainLevel => Level < MaxLevel;
 
 		public void GiveLevels(int numLevels, bool silent = false)
 		{
+			if (MaxLevel == 0)
+				return;
+
 			var newLevel = Math.Min(Level + numLevels, MaxLevel);
-			GiveExperience(nextLevel[newLevel - 1].First - experience, silent);
+			GiveExperience(nextLevel[newLevel - 1].RequiredExperience - Experience, silent);
 		}
 
 		public void GiveExperience(int amount, bool silent = false)
 		{
 			if (amount < 0)
-				throw new ArgumentException("Revoking experience is not implemented.", "amount");
+				throw new ArgumentException("Revoking experience is not implemented.", nameof(amount));
 
-			experience = (experience + amount).Clamp(0, nextLevel[MaxLevel - 1].First);
+			if (MaxLevel == 0)
+				return;
 
-			while (Level < MaxLevel && experience >= nextLevel[Level].First)
+			Experience = (Experience + amount).Clamp(0, nextLevel[MaxLevel - 1].RequiredExperience);
+
+			while (Level < MaxLevel && Experience >= nextLevel[Level].RequiredExperience)
 			{
-				if (conditionManager != null)
-					conditionManager.GrantCondition(self, nextLevel[Level].Second);
+				self.GrantCondition(nextLevel[Level].Condition);
 
 				Level++;
 
 				if (!silent)
 				{
 					Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Sounds", info.LevelUpNotification, self.Owner.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(info.LevelUpTextNotification, self.Owner);
+
 					if (info.LevelUpImage != null && info.LevelUpSequence != null)
 						self.World.AddFrameEndTask(w => w.Add(new SpriteEffect(self, w, info.LevelUpImage, info.LevelUpSequence, info.LevelUpPalette)));
 				}
@@ -137,15 +143,16 @@ namespace OpenRA.Mods.Common.Traits
 					GiveLevels(1);
 			}
 		}
+
+		void ITransformActorInitModifier.ModifyTransformActorInit(Actor self, TypeDictionary init)
+		{
+			init.Add(new ExperienceInit(info, Experience));
+		}
 	}
 
-	class ExperienceInit : IActorInit<int>
+	class ExperienceInit : ValueActorInit<int>
 	{
-		[FieldFromYamlKey]
-		readonly int value;
-
-		public ExperienceInit() { }
-		public ExperienceInit(int init) { value = init; }
-		public int Value(World world) { return value; }
+		public ExperienceInit(TraitInfo info, int value)
+			: base(info, value) { }
 	}
 }

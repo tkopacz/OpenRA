@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -24,10 +24,25 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly int Cooldown = 0;
 		public readonly int InitialDelay = 0;
 
+		[Desc("Range circle color when operational.")]
+		public readonly Color CircleReadyColor = Color.FromArgb(128, Color.White);
+
+		[Desc("Range circle color when inactive.")]
+		public readonly Color CircleBlockedColor = Color.FromArgb(128, Color.Red);
+
+		[Desc("Range circle line width.")]
+		public readonly float CircleWidth = 1;
+
+		[Desc("Range circle border color.")]
+		public readonly Color CircleBorderColor = Color.FromArgb(96, Color.Black);
+
+		[Desc("Range circle border width.")]
+		public readonly float CircleBorderWidth = 3;
+
 		public override object Create(ActorInitializer init) { return new BaseProvider(init.Self, this); }
 	}
 
-	public class BaseProvider : PausableConditionalTrait<BaseProviderInfo>, ITick, IRenderAboveShroudWhenSelected, ISelectionBar
+	public class BaseProvider : PausableConditionalTrait<BaseProviderInfo>, ITick, IRenderAnnotationsWhenSelected, ISelectionBar
 	{
 		readonly DeveloperMode devMode;
 		readonly Actor self;
@@ -72,7 +87,7 @@ namespace OpenRA.Mods.Common.Traits
 			return buildRadiusEnabled && (self.Owner == self.World.RenderPlayer || (allyBuildEnabled && self.Owner.IsAlliedWith(self.World.RenderPlayer)));
 		}
 
-		public IEnumerable<IRenderable> RangeCircleRenderables(WorldRenderer wr)
+		public IEnumerable<IRenderable> RangeCircleRenderables()
 		{
 			if (IsTraitDisabled)
 				yield break;
@@ -81,20 +96,22 @@ namespace OpenRA.Mods.Common.Traits
 			if (!ValidRenderPlayer())
 				yield break;
 
-			yield return new RangeCircleRenderable(
+			yield return new RangeCircleAnnotationRenderable(
 				self.CenterPosition,
 				Info.Range,
 				0,
-				Color.FromArgb(128, Ready() ? Color.White : Color.Red),
-				Color.FromArgb(96, Color.Black));
+				Ready() ? Info.CircleReadyColor : Info.CircleBlockedColor,
+				Info.CircleWidth,
+				Info.CircleBorderColor,
+				Info.CircleBorderWidth);
 		}
 
-		IEnumerable<IRenderable> IRenderAboveShroudWhenSelected.RenderAboveShroud(Actor self, WorldRenderer wr)
+		IEnumerable<IRenderable> IRenderAnnotationsWhenSelected.RenderAnnotations(Actor self, WorldRenderer wr)
 		{
-			return RangeCircleRenderables(wr);
+			return RangeCircleRenderables();
 		}
 
-		bool IRenderAboveShroudWhenSelected.SpatiallyPartitionable { get { return false; } }
+		bool IRenderAnnotationsWhenSelected.SpatiallyPartitionable => false;
 
 		float ISelectionBar.GetValue()
 		{
@@ -113,6 +130,6 @@ namespace OpenRA.Mods.Common.Traits
 		}
 
 		Color ISelectionBar.GetColor() { return Color.Purple; }
-		bool ISelectionBar.DisplayWhenEmpty { get { return false; } }
+		bool ISelectionBar.DisplayWhenEmpty => false;
 	}
 }

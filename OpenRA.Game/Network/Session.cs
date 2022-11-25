@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -12,6 +12,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using OpenRA.Primitives;
 
 namespace OpenRA.Network
@@ -19,12 +21,25 @@ namespace OpenRA.Network
 	public class Session
 	{
 		public List<Client> Clients = new List<Client>();
-		public List<ClientPing> ClientPings = new List<ClientPing>();
 
 		// Keyed by the PlayerReference id that the slot corresponds to
 		public Dictionary<string, Slot> Slots = new Dictionary<string, Slot>();
 
+		public HashSet<int> DisabledSpawnPoints = new HashSet<int>();
+
 		public Global GlobalSettings = new Global();
+
+		public static string AnonymizeIP(IPAddress ip)
+		{
+			if (ip.AddressFamily == AddressFamily.InterNetwork)
+			{
+				// Follow convention used by Google Analytics: remove last octet
+				var b = ip.GetAddressBytes();
+				return $"{b[0]}.{b[1]}.{b[2]}.*";
+			}
+
+			return null;
+		}
 
 		public static Session Deserialize(string data)
 		{
@@ -43,10 +58,6 @@ namespace OpenRA.Network
 							session.Clients.Add(Client.Deserialize(node.Value));
 							break;
 
-						case "ClientPing":
-							session.ClientPings.Add(ClientPing.Deserialize(node.Value));
-							break;
-
 						case "GlobalSettings":
 							session.GlobalSettings = Global.Deserialize(node.Value);
 							break;
@@ -55,6 +66,9 @@ namespace OpenRA.Network
 							var s = Slot.Deserialize(node.Value);
 							session.Slots.Add(s.PlayerReference, s);
 							break;
+						case "DisabledSpawnPoints":
+							session.DisabledSpawnPoints = FieldLoader.GetValue<HashSet<int>>("DisabledSpawnPoints", node.Value.Value);
+							break;
 					}
 				}
 
@@ -62,11 +76,11 @@ namespace OpenRA.Network
 			}
 			catch (YamlException)
 			{
-				throw new YamlException("Session deserialized invalid MiniYaml:\n{0}".F(data));
+				throw new YamlException($"Session deserialized invalid MiniYaml:\n{data}");
 			}
 			catch (InvalidOperationException)
 			{
-				throw new YamlException("Session deserialized invalid MiniYaml:\n{0}".F(data));
+				throw new YamlException($"Session deserialized invalid MiniYaml:\n{data}");
 			}
 		}
 
@@ -102,6 +116,8 @@ namespace OpenRA.Network
 
 		public enum ClientState { NotReady, Invalid, Ready, Disconnected = 1000 }
 
+		public enum ConnectionQuality { Good, Moderate, Poor }
+
 		public class Client
 		{
 			public static Client Deserialize(MiniYaml data)
@@ -115,46 +131,33 @@ namespace OpenRA.Network
 			public string Faction;
 			public int SpawnPoint;
 			public string Name;
-			public string IpAddress;
+
+			// The full IP address is required for the IP banning moderation feature
+			// but we must not share the un-anonymized address with other players.
+			[FieldLoader.Ignore]
+			public string IPAddress;
+			public string AnonymizedIPAddress;
+			public string Location;
+			public ConnectionQuality ConnectionQuality = ConnectionQuality.Good;
+
 			public ClientState State = ClientState.Invalid;
 			public int Team;
+			public int Handicap;
 			public string Slot; // Slot ID, or null for observer
 			public string Bot; // Bot type, null for real clients
 			public int BotControllerClientIndex; // who added the bot to the slot
 			public bool IsAdmin;
-			public bool IsReady { get { return State == ClientState.Ready; } }
-			public bool IsInvalid { get { return State == ClientState.Invalid; } }
-			public bool IsObserver { get { return Slot == null; } }
+			public bool IsReady => State == ClientState.Ready;
+			public bool IsInvalid => State == ClientState.Invalid;
+			public bool IsObserver => Slot == null;
+			public bool IsBot => Bot != null;
 
 			// Linked to the online player database
 			public string Fingerprint;
 
 			public MiniYamlNode Serialize()
 			{
-				return new MiniYamlNode("Client@{0}".F(Index), FieldSaver.Save(this));
-			}
-		}
-
-		public ClientPing PingFromClient(Client client)
-		{
-			return ClientPings.SingleOrDefault(p => p.Index == client.Index);
-		}
-
-		public class ClientPing
-		{
-			public int Index;
-			public long Latency = -1;
-			public long LatencyJitter = -1;
-			public long[] LatencyHistory = { };
-
-			public static ClientPing Deserialize(MiniYaml data)
-			{
-				return FieldLoader.Load<ClientPing>(data);
-			}
-
-			public MiniYamlNode Serialize()
-			{
-				return new MiniYamlNode("ClientPing@{0}".F(Index), FieldSaver.Save(this));
+				return new MiniYamlNode($"Client@{Index}", FieldSaver.Save(this));
 			}
 		}
 
@@ -167,6 +170,7 @@ namespace OpenRA.Network
 			public bool LockFaction;
 			public bool LockColor;
 			public bool LockTeam;
+			public bool LockHandicap;
 			public bool LockSpawn;
 			public bool Required;
 
@@ -177,7 +181,7 @@ namespace OpenRA.Network
 
 			public MiniYamlNode Serialize()
 			{
-				return new MiniYamlNode("Slot@{0}".F(PlayerReference), FieldSaver.Save(this));
+				return new MiniYamlNode($"Slot@{PlayerReference}", FieldSaver.Save(this));
 			}
 		}
 
@@ -187,15 +191,24 @@ namespace OpenRA.Network
 			public string PreferredValue;
 
 			public bool IsLocked;
-			public bool IsEnabled { get { return Value == "True"; } }
+			public bool IsEnabled => Value == "True";
+		}
+
+		[Flags]
+		public enum MapStatus
+		{
+			Unknown = 0,
+			Validating = 1,
+			Playable = 2,
+			Incompatible = 4,
+			UnsafeCustomRules = 8,
 		}
 
 		public class Global
 		{
 			public string ServerName;
 			public string Map;
-			public int Timestep = 40;
-			public int OrderLatency = 3; // net tick frames (x 120 = ms)
+			public MapStatus MapStatus;
 			public int RandomSeed = 0;
 			public bool AllowSpectators = true;
 			public string GameUid;
@@ -203,6 +216,9 @@ namespace OpenRA.Network
 			public bool EnableSyncReports;
 			public bool Dedicated;
 			public bool GameSavesEnabled;
+
+			// 120ms network frame interval for 40ms local tick
+			public int NetFrameInterval = 3;
 
 			[FieldLoader.Ignore]
 			public Dictionary<string, LobbyOptionState> LobbyOptions = new Dictionary<string, LobbyOptionState>();
@@ -229,8 +245,7 @@ namespace OpenRA.Network
 
 			public bool OptionOrDefault(string id, bool def)
 			{
-				LobbyOptionState option;
-				if (LobbyOptions.TryGetValue(id, out option))
+				if (LobbyOptions.TryGetValue(id, out var option))
 					return option.IsEnabled;
 
 				return def;
@@ -238,8 +253,7 @@ namespace OpenRA.Network
 
 			public string OptionOrDefault(string id, string def)
 			{
-				LobbyOptionState option;
-				if (LobbyOptions.TryGetValue(id, out option))
+				if (LobbyOptions.TryGetValue(id, out var option))
 					return option.Value;
 
 				return def;
@@ -248,13 +262,13 @@ namespace OpenRA.Network
 
 		public string Serialize()
 		{
-			var sessionData = new List<MiniYamlNode>();
+			var sessionData = new List<MiniYamlNode>()
+			{
+				new MiniYamlNode("DisabledSpawnPoints", FieldSaver.FormatValue(DisabledSpawnPoints))
+			};
 
 			foreach (var client in Clients)
 				sessionData.Add(client.Serialize());
-
-			foreach (var clientPing in ClientPings)
-				sessionData.Add(clientPing.Serialize());
 
 			foreach (var slot in Slots)
 				sessionData.Add(slot.Value.Serialize());

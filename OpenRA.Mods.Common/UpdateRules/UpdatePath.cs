@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,7 +10,6 @@
 #endregion
 
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using OpenRA.Mods.Common.UpdateRules.Rules;
 
@@ -30,104 +29,74 @@ namespace OpenRA.Mods.Common.UpdateRules
 		// can be merged back into bleed by replacing the forking-playtest-to-bleed path
 		// with the prep playtest-to-playtest-to-release paths and finally a new/modified
 		// release-to-bleed path.
-		[SuppressMessage("StyleCop.CSharp.ReadabilityRules", "SA1118:ParameterMustNotSpanMultipleLines",
-			Justification = "Extracting update lists to temporary variables obfuscates the definitions.")]
 		static readonly UpdatePath[] Paths =
 		{
-			new UpdatePath("release-20171014", "release-20180218", new UpdateRule[]
+			new UpdatePath("release-20200202", "release-20200503", new UpdateRule[]
 			{
-				new LegacyBetaWarning(),
-				new RemoveMobileOnRails(),
-				new AircraftCanHoverGeneralization(),
-				new AddNukeLaunchAnimation(),
-				new RenameWithTurreted(),
-				new RemovePlayerPaletteTileset(),
-				new CapturableChanges(),
-				new DecoupleSelfReloading(),
-				new RemoveOutOfAmmo(),
-				new ChangeCanPowerDown(),
-				new ReplaceRequiresPower(),
-				new DropPauseAnimationWhenDisabled(),
-				new ChangeBuildableArea(),
-				new MoveVisualBounds(),
-				new ScaleDefaultModHealth(),
-				new ReworkCheckboxes(),
-				new SplitGateFromBuilding(),
-				new RemoveIDisable(),
-				new ReplaceCanPowerDown(),
-				new ScaleSupportPowerSecondsToTicks(),
-				new WarnAboutInfiltrateForTypes(),
-				new RenameBurstDelay(),
+				new RemoveYesNo(),
+				new RemoveInitialFacingHardcoding(),
+				new RemoveAirdropActorTypeDefault(),
+				new RenameProneTime(),
+				new RemoveWithPermanentInjury(),
+				new AddResourceRenderer(),
+				new ReformatChromeProvider(),
+				new RenameSpins(),
+				new CreateScreenShakeWarhead(),
+				new RenameRallyPointPath(),
 			}),
 
-			new UpdatePath("release-20180218", "release-20180307", new UpdateRule[0]),
-
-			new UpdatePath("release-20180307", "release-20180923", new UpdateRule[]
+			new UpdatePath("release-20200503", "release-20210321", new UpdateRule[]
 			{
-				new RemoveTerrainTypeIsWaterFlag(),
-				new DefineSquadExcludeHarvester(),
-				new RemoveWeaponScanRadius(),
-				new SplitAimAnimations(),
-				new DefineSoundDefaults(),
-				new RenameWormSpawner(),
-				new RemoveWithReloadingSpriteTurret(),
-				new ChangeIntensityToDuration(),
-				new IgnoreAbstractActors(),
-				new AddShakeToBridge(),
-				new RemovePaletteFromCurrentTileset(),
-				new DefineLocomotors(),
-				new DefineOwnerLostAction(),
-				new RenameEmitInfantryOnSell(),
-				new SplitRepairDecoration(),
-				new MoveHackyAISupportPowerDecisions(),
-				new DefineGroundCorpseDefault(),
-				new RemoveCanUndeployFromGrantConditionOnDeploy(),
+				new AddPipDecorationTraits(),
+				new ModernizeDecorationTraits(),
+				new RenameHealCrateAction(),
+				new RenameInfiltrationNotifications(),
+				new MoveClassicFacingFudge(),
+				new RenameWithNukeLaunch(),
+				new SpawnActorPowerDefaultEffect(),
+				new RemoveConditionManager(),
+				new ConvertSupportPowerRangesToFootprint(),
+				new UpdateTilesetColors(),
+				new UpdateMapInits(),
+				new CreateFlashPaletteEffectWarhead(),
+				new ChangeTargetLineDelayToMilliseconds(),
+				new ReplaceFacingAngles(),
+				new RenameSelfHealing(),
+				new ReplaceBurns(),
+				new RemoveMuzzleSplitFacings(),
+				new RenameStances(),
+				new RemoveTurnToDock(),
+				new RenameSmudgeSmokeFields(),
+				new RenameCircleContrast(),
+				new SplitDamagedByTerrain(),
+				new RemoveLaysTerrain(),
 			}),
 
-			new UpdatePath("release-20180923", "release-20181215", new UpdateRule[0]),
-
-			new UpdatePath("release-20181215", "release-20190314", new UpdateRule[]
-			{
-				new AddCarryableHarvester(),
-				new RenameEditorTilesetFilter(),
-				new DefineNotificationDefaults(),
-				new MergeRearmAndRepairAnimation(),
-				new MergeCaptureTraits(),
-				new RemovedNotifyBuildComplete(),
-				new LowPowerSlowdownToModifier(),
-				new ChangeTakeOffSoundAndLandingSound(),
-				new RemoveHealthPercentageRing(),
-				new RenameCrateActionNotification(),
-				new RemoveRepairBuildingsFromAircraft(),
-				new AddRearmable(),
-				new MergeAttackPlaneAndHeli(),
-				new RemovedDemolishLocking(),
-				new RequireProductionType(),
-				new CloakRequiresConditionToPause(),
-				new ExtractHackyAIModules(),
-				new RemoveNegativeDamageFullHealthCheck(),
-				new RemoveResourceExplodeModifier(),
-				new DefineLevelUpImageDefault(),
-				new RemovedAutoCarryallCircleTurnSpeed(),
-				new RemoveAttackIgnoresVisibility(),
-				new ReplacedWithChargeAnimation(),
-				new RefactorResourceLevelAnimating(),
-				new RemoveAttackSuicides(),
-			}),
-
-			new UpdatePath("release-20190314", new UpdateRule[]
+			new UpdatePath("release-20210321", new UpdateRule[]
 			{
 				// Bleed only changes here
-				new MultipleDeploySounds(),
-				new RemoveSimpleBeacon(),
-				new MakeMobilePausableConditional(),
-				new StreamlineRepairableTraits(),
-				new ReplaceSpecialMoveConsiderations(),
-				new RefactorHarvesterIdle(),
-				new SplitHarvesterSpriteBody(),
-				new RenameAttackMoveConditions(),
-				new RemovePlaceBuildingPalettes(),
-				new RenameHoversOffsetModifier(),
+				new RenameMPTraits(),
+				new RemovePlayerHighlightPalette(),
+				new ReplaceWithColoredOverlayPalette(),
+				new RemoveRenderSpritesScale(),
+				new RemovePlaceBuildingPalette(),
+				new ReplaceShadowPalette(),
+				new ReplaceResourceValueModifiers(),
+				new RemoveResourceType(),
+				new ConvertBoundsToWDist(),
+				new RemoveSmokeTrailWhenDamaged(),
+				new ReplaceCrateSecondsWithTicks(),
+				new UseMillisecondsForSounds(),
+				new UnhardcodeSquadManager(),
+				new RenameSupportPowerDescription(),
+				new AttackBomberFacingTolerance(),
+				new AttackFrontalFacingTolerance(),
+				new RenameCloakTypes(),
+				new SplitNukePowerMissileImage(),
+				new ReplaceSequenceEmbeddedPalette(),
+				new UnhardcodeBaseBuilderBotModule(),
+				new UnhardcodeVeteranProductionIconOverlay(),
+				new RenameContrailProperties(),
 			})
 		};
 

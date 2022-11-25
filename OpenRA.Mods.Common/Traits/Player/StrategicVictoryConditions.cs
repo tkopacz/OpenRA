@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -12,7 +12,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Network;
-using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
@@ -22,7 +21,7 @@ namespace OpenRA.Mods.Common.Traits
 	public class StrategicPoint { }
 
 	[Desc("Allows King of the Hill (KotH) style gameplay.")]
-	public class StrategicVictoryConditionsInfo : ITraitInfo, Requires<MissionObjectivesInfo>
+	public class StrategicVictoryConditionsInfo : TraitInfo, Requires<MissionObjectivesInfo>
 	{
 		[Desc("Amount of time (in game ticks) that the player has to hold all the strategic points.", "Defaults to 7500 ticks (5 minutes at default speed).")]
 		public readonly int HoldDuration = 7500;
@@ -36,14 +35,13 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Delay for the end game notification in milliseconds.")]
 		public readonly int NotificationDelay = 1500;
 
-		[Translate]
 		[Desc("Description of the objective")]
 		public readonly string Objective = "Hold all the strategic positions!";
 
 		[Desc("Disable the win/loss messages and audio notifications?")]
 		public readonly bool SuppressNotifications = false;
 
-		public object Create(ActorInitializer init) { return new StrategicVictoryConditions(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new StrategicVictoryConditions(init.Self, this); }
 	}
 
 	public class StrategicVictoryConditions : ITick, ISync, INotifyWinStateChanged, INotifyTimeLimit
@@ -67,15 +65,12 @@ namespace OpenRA.Mods.Common.Traits
 			shortGame = player.World.WorldActor.Trait<MapOptions>().ShortGame;
 		}
 
-		public IEnumerable<Actor> AllPoints
-		{
-			get { return player.World.ActorsHavingTrait<StrategicPoint>(); }
-		}
+		public IEnumerable<Actor> AllPoints => player.World.ActorsHavingTrait<StrategicPoint>();
 
-		public int Total { get { return AllPoints.Count(); } }
-		int Owned { get { return AllPoints.Count(a => WorldUtils.AreMutualAllies(player, a.Owner)); } }
+		public int Total => AllPoints.Count();
+		int Owned { get { return AllPoints.Count(a => a.Owner.RelationshipWith(player) == PlayerRelationship.Ally); } }
 
-		public bool Holding { get { return Owned >= info.RatioRequired * Total / 100; } }
+		public bool Holding => Owned >= info.RatioRequired * Total / 100;
 
 		void ITick.Tick(Actor self)
 		{
@@ -119,12 +114,12 @@ namespace OpenRA.Mods.Common.Traits
 
 			var myTeam = self.World.LobbyInfo.ClientWithIndex(self.Owner.ClientIndex).Team;
 			var teams = self.World.Players.Where(p => !p.NonCombatant && p.Playable)
-				.Select(p => new Pair<Player, PlayerStatistics>(p, p.PlayerActor.TraitOrDefault<PlayerStatistics>()))
-				.OrderByDescending(p => p.Second != null ? p.Second.Experience : 0)
-				.GroupBy(p => (self.World.LobbyInfo.ClientWithIndex(p.First.ClientIndex) ?? new Session.Client()).Team)
-				.OrderByDescending(g => g.Sum(gg => gg.Second != null ? gg.Second.Experience : 0));
+				.Select(p => (Player: p, PlayerStatistics: p.PlayerActor.TraitOrDefault<PlayerStatistics>()))
+				.OrderByDescending(p => p.PlayerStatistics?.Experience ?? 0)
+				.GroupBy(p => (self.World.LobbyInfo.ClientWithIndex(p.Player.ClientIndex) ?? new Session.Client()).Team)
+				.OrderByDescending(g => g.Sum(gg => gg.PlayerStatistics?.Experience ?? 0));
 
-			if (teams.First().Key == myTeam && (myTeam != 0 || teams.First().First().First == self.Owner))
+			if (teams.First().Key == myTeam && (myTeam != 0 || teams.First().First().Player == self.Owner))
 			{
 				mo.MarkCompleted(self.Owner, objectiveID);
 				return;
@@ -141,11 +136,14 @@ namespace OpenRA.Mods.Common.Traits
 			if (info.SuppressNotifications)
 				return;
 
-			Game.AddSystemLine("Battlefield Control", player.PlayerName + " is defeated.");
+			TextNotificationsManager.AddSystemLine(player.PlayerName + " is defeated.");
 			Game.RunAfterDelay(info.NotificationDelay, () =>
 			{
 				if (Game.IsCurrentWorld(player.World) && player == player.World.LocalPlayer)
+				{
 					Game.Sound.PlayNotification(player.World.Map.Rules, player, "Speech", mo.Info.LoseNotification, player.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(mo.Info.LoseTextNotification, player);
+				}
 			});
 		}
 
@@ -154,11 +152,14 @@ namespace OpenRA.Mods.Common.Traits
 			if (info.SuppressNotifications)
 				return;
 
-			Game.AddSystemLine("Battlefield Control", player.PlayerName + " is victorious.");
+			TextNotificationsManager.AddSystemLine(player.PlayerName + " is victorious.");
 			Game.RunAfterDelay(info.NotificationDelay, () =>
 			{
 				if (Game.IsCurrentWorld(player.World) && player == player.World.LocalPlayer)
+				{
 					Game.Sound.PlayNotification(player.World.Map.Rules, player, "Speech", mo.Info.WinNotification, player.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(mo.Info.WinTextNotification, player);
+				}
 			});
 		}
 	}

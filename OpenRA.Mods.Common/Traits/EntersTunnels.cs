@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -20,42 +20,57 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("This actor can interact with TunnelEntrances to move through TerrainTunnels.")]
-	public class EntersTunnelsInfo : ITraitInfo, Requires<IMoveInfo>, IObservesVariablesInfo
+	public class EntersTunnelsInfo : TraitInfo, Requires<IMoveInfo>, IObservesVariablesInfo
 	{
+		[CursorReference]
+		[Desc("Cursor to display when able to enter target tunnel.")]
 		public readonly string EnterCursor = "enter";
+
+		[CursorReference]
+		[Desc("Cursor to display when unable to enter target tunnel.")]
 		public readonly string EnterBlockedCursor = "enter-blocked";
 
 		[VoiceReference]
 		public readonly string Voice = "Action";
 
+		[Desc("Color to use for the target line while in tunnels.")]
+		public readonly Color TargetLineColor = Color.Green;
+
 		[ConsumedConditionReference]
 		[Desc("Boolean expression defining the condition under which the regular (non-force) enter cursor is disabled.")]
 		public readonly BooleanExpression RequireForceMoveCondition = null;
 
-		public object Create(ActorInitializer init) { return new EntersTunnels(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new EntersTunnels(init.Self, this); }
 	}
 
 	public class EntersTunnels : IIssueOrder, IResolveOrder, IOrderVoice, IObservesVariables
 	{
 		readonly EntersTunnelsInfo info;
 		readonly IMove move;
+		readonly IMoveInfo moveInfo;
 		bool requireForceMove;
 
 		public EntersTunnels(Actor self, EntersTunnelsInfo info)
 		{
 			this.info = info;
 			move = self.Trait<IMove>();
+			moveInfo = self.Info.TraitInfo<IMoveInfo>();
 		}
 
 		public IEnumerable<IOrderTargeter> Orders
 		{
 			get
 			{
-				yield return new EnterTunnelOrderTargeter(info.EnterCursor, info.EnterBlockedCursor, () => requireForceMove);
+				yield return new EnterTunnelOrderTargeter(info.EnterCursor, info.EnterBlockedCursor, CanEnterTunnel, _ => true);
 			}
 		}
 
-		public Order IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		bool CanEnterTunnel(Actor target, TargetModifiers modifiers)
+		{
+			return !requireForceMove || modifiers.HasModifier(TargetModifiers.ForceMove);
+		}
+
+		public Order IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order.OrderID != "EnterTunnel")
 				return null;
@@ -77,12 +92,9 @@ namespace OpenRA.Mods.Common.Traits
 			if (tunnel == null || !tunnel.Exit.HasValue)
 				return;
 
-			if (!order.Queued)
-				self.CancelActivity();
-
-			self.SetTargetLine(Target.FromCell(self.World, tunnel.Exit.Value), Color.Green);
-			self.QueueActivity(move.MoveTo(tunnel.Entrance, tunnel.NearEnough));
-			self.QueueActivity(move.MoveTo(tunnel.Exit.Value, tunnel.NearEnough));
+			self.QueueActivity(order.Queued, move.MoveTo(tunnel.Entrance, tunnel.NearEnough, targetLineColor: moveInfo.GetTargetLineColor()));
+			self.QueueActivity(move.MoveTo(tunnel.Exit.Value, tunnel.NearEnough, targetLineColor: info.TargetLineColor));
+			self.ShowTargetLines();
 		}
 
 		IEnumerable<VariableObserver> IObservesVariables.GetVariableObservers()
@@ -100,19 +112,22 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			readonly string enterCursor;
 			readonly string enterBlockedCursor;
-			readonly Func<bool> requireForceMove;
+			readonly Func<Actor, TargetModifiers, bool> canTarget;
+			readonly Func<Actor, bool> useEnterCursor;
 
-			public EnterTunnelOrderTargeter(string enterCursor, string enterBlockedCursor, Func<bool> requireForceMove)
+			public EnterTunnelOrderTargeter(string enterCursor, string enterBlockedCursor,
+				Func<Actor, TargetModifiers, bool> canTarget, Func<Actor, bool> useEnterCursor)
 				: base("EnterTunnel", 6, enterCursor, true, true)
 			{
 				this.enterCursor = enterCursor;
 				this.enterBlockedCursor = enterBlockedCursor;
-				this.requireForceMove = requireForceMove;
+				this.canTarget = canTarget;
+				this.useEnterCursor = useEnterCursor;
 			}
 
 			public override bool CanTargetActor(Actor self, Actor target, TargetModifiers modifiers, ref string cursor)
 			{
-				if (target == null || target.IsDead || (requireForceMove() && !modifiers.HasModifier(TargetModifiers.ForceMove)))
+				if (target == null || target.IsDead || !canTarget(target, modifiers))
 					return false;
 
 				var tunnel = target.TraitOrDefault<TunnelEntrance>();
@@ -135,7 +150,7 @@ namespace OpenRA.Mods.Common.Traits
 					return false;
 				}
 
-				cursor = enterCursor;
+				cursor = useEnterCursor(target) ? enterCursor : enterBlockedCursor;
 				return true;
 			}
 

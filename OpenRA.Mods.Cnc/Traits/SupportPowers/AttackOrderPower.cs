@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -22,6 +22,18 @@ namespace OpenRA.Mods.Cnc.Traits
 {
 	class AttackOrderPowerInfo : SupportPowerInfo, Requires<AttackBaseInfo>
 	{
+		[Desc("Range circle color.")]
+		public readonly Color CircleColor = Color.Red;
+
+		[Desc("Range circle line width.")]
+		public readonly float CircleWidth = 1;
+
+		[Desc("Range circle border color.")]
+		public readonly Color CircleBorderColor = Color.FromArgb(96, Color.Black);
+
+		[Desc("Range circle border width.")]
+		public readonly float CircleBorderWidth = 3;
+
 		public override object Create(ActorInitializer init) { return new AttackOrderPower(init.Self, this); }
 	}
 
@@ -38,15 +50,15 @@ namespace OpenRA.Mods.Cnc.Traits
 
 		public override void SelectTarget(Actor self, string order, SupportPowerManager manager)
 		{
-			Game.Sound.PlayToPlayer(SoundType.UI, manager.Self.Owner, Info.SelectTargetSound);
 			self.World.OrderGenerator = new SelectAttackPowerTarget(self, order, manager, info.Cursor, MouseButton.Left, attack);
 		}
 
 		public override void Activate(Actor self, Order order, SupportPowerManager manager)
 		{
 			base.Activate(self, order, manager);
+			PlayLaunchSounds();
 
-			attack.AttackTarget(order.Target, false, false, true);
+			attack.AttackTarget(order.Target, AttackSource.Default, false, false, true);
 		}
 
 		protected override void Created(Actor self)
@@ -56,7 +68,7 @@ namespace OpenRA.Mods.Cnc.Traits
 			base.Created(self);
 		}
 
-		void INotifyBurstComplete.FiredBurst(Actor self, Target target, Armament a)
+		void INotifyBurstComplete.FiredBurst(Actor self, in Target target, Armament a)
 		{
 			self.World.IssueOrder(new Order("Stop", self, false));
 		}
@@ -108,29 +120,35 @@ namespace OpenRA.Mods.Cnc.Traits
 		protected override void Tick(World world)
 		{
 			// Cancel the OG if we can't use the power
-			if (!manager.Powers.ContainsKey(order))
+			if (!manager.Powers.TryGetValue(order, out var p) || !p.Active || !p.Ready)
 				world.CancelInputMode();
 		}
 
 		protected override IEnumerable<IRenderable> Render(WorldRenderer wr, World world) { yield break; }
+		protected override IEnumerable<IRenderable> RenderAboveShroud(WorldRenderer wr, World world) { yield break; }
 
-		protected override IEnumerable<IRenderable> RenderAboveShroud(WorldRenderer wr, World world)
+		protected override IEnumerable<IRenderable> RenderAnnotations(WorldRenderer wr, World world)
 		{
+			var info = instance.Info as AttackOrderPowerInfo;
 			foreach (var a in instance.Instances.Where(i => !i.IsTraitPaused))
 			{
-				yield return new RangeCircleRenderable(
+				yield return new RangeCircleAnnotationRenderable(
 					a.Self.CenterPosition,
 					attack.GetMinimumRange(),
 					0,
-					Color.Red,
-					Color.FromArgb(96, Color.Black));
+					info.CircleColor,
+					info.CircleWidth,
+					info.CircleBorderColor,
+					info.CircleBorderWidth);
 
-				yield return new RangeCircleRenderable(
+				yield return new RangeCircleAnnotationRenderable(
 					a.Self.CenterPosition,
 					attack.GetMaximumRange(),
 					0,
-					Color.Red,
-					Color.FromArgb(96, Color.Black));
+					info.CircleColor,
+					info.CircleWidth,
+					info.CircleBorderColor,
+					info.CircleBorderWidth);
 			}
 		}
 

@@ -1,4 +1,4 @@
-MapFormat: 11
+MapFormat: 12
 
 RequiresMod: d2k
 
@@ -33,25 +33,25 @@ Players:
 		LockFaction: True
 		Faction: harkonnen
 		LockColor: True
-		Color: FE0000
+		Color: D64A42
 		Enemies: Ordos Main Base, Ordos Small Base, Smugglers - Enemy to Harkonnen, Smugglers - Enemy to Both, Creeps
 	PlayerReference@Ordos Main Base:
 		Name: Ordos Main Base
 		LockFaction: True
 		Faction: ordos
 		LockColor: True
-		Color: B3EAA5
+		Color: 5A9473
 		Allies: Ordos Small Base
-		Enemies: Harkonnen, Smugglers - Enemy to Ordos, Smugglers - Enemy to Both
+		Enemies: Harkonnen, Smugglers - Enemy to Ordos, Smugglers - Enemy to Both, Creeps
 		Bot: campaign
 	PlayerReference@Ordos Small Base:
 		Name: Ordos Small Base
 		LockFaction: True
 		Faction: ordos
 		LockColor: True
-		Color: B3EAA5
+		Color: 5A9473
 		Allies: Ordos Main Base
-		Enemies: Harkonnen, Smugglers - Enemy to Ordos, Smugglers - Enemy to Both
+		Enemies: Harkonnen, Smugglers - Enemy to Ordos, Smugglers - Enemy to Both, Creeps
 		Bot: campaign
 	PlayerReference@Smugglers - Neutral:
 		Name: Smugglers - Neutral
@@ -59,16 +59,17 @@ Players:
 		LockFaction: True
 		Faction: smuggler
 		LockColor: True
-		Color: 542209
+		Color: 7B2910
 		Bot: campaign
+		Enemies: Creeps
 	PlayerReference@Smugglers - Enemy to Harkonnen:
 		Name: Smugglers - Enemy to Harkonnen
 		NonCombatant: True
 		LockFaction: True
 		Faction: smuggler
 		LockColor: True
-		Color: 542209
-		Enemies: Harkonnen
+		Color: 7B2910
+		Enemies: Harkonnen, Creeps
 		Bot: campaign
 	PlayerReference@Smugglers - Enemy to Ordos:
 		Name: Smugglers - Enemy to Ordos
@@ -76,8 +77,8 @@ Players:
 		LockFaction: True
 		Faction: smuggler
 		LockColor: True
-		Color: 542209
-		Enemies: Ordos Main Base, Ordos Small Base
+		Color: 7B2910
+		Enemies: Ordos Main Base, Ordos Small Base, Creeps
 		Bot: campaign
 	PlayerReference@Smugglers - Enemy to Both:
 		Name: Smugglers - Enemy to Both
@@ -85,8 +86,8 @@ Players:
 		LockFaction: True
 		Faction: smuggler
 		LockColor: True
-		Color: 542209
-		Enemies: Harkonnen, Ordos Main Base, Ordos Small Base
+		Color: 7B2910
+		Enemies: Harkonnen, Ordos Main Base, Ordos Small Base, Creeps
 		Bot: campaign
 
 Actors:

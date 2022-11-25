@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -34,14 +34,14 @@ namespace OpenRA.Mods.Common.Traits.Sound
 	class AmbientSound : ConditionalTrait<AmbientSoundInfo>, ITick, INotifyRemovedFromWorld
 	{
 		readonly bool loop;
-		HashSet<ISound> currentSounds = new HashSet<ISound>();
+		readonly HashSet<ISound> currentSounds = new HashSet<ISound>();
 		WPos cachedPosition;
 		int delay;
 
 		public AmbientSound(Actor self, AmbientSoundInfo info)
 			: base(info)
 		{
-			delay = Util.RandomDelay(self.World, info.Delay);
+			delay = Util.RandomInRange(self.World.SharedRandom, info.Delay);
 			loop = Info.Interval.Length == 0 || (Info.Interval.Length == 1 && Info.Interval[0] == 0);
 		}
 
@@ -52,13 +52,16 @@ namespace OpenRA.Mods.Common.Traits.Sound
 
 			currentSounds.RemoveWhere(s => s == null || s.Complete);
 
-			var pos = self.CenterPosition;
-			if (pos != cachedPosition)
+			if (self.OccupiesSpace != null)
 			{
-				foreach (var s in currentSounds)
-					s.SetPosition(pos);
+				var pos = self.CenterPosition;
+				if (pos != cachedPosition)
+				{
+					foreach (var s in currentSounds)
+						s.SetPosition(pos);
 
-				cachedPosition = pos;
+					cachedPosition = pos;
+				}
 			}
 
 			if (delay < 0)
@@ -68,7 +71,7 @@ namespace OpenRA.Mods.Common.Traits.Sound
 			{
 				StartSound(self);
 				if (!loop)
-					delay = Util.RandomDelay(self.World, Info.Interval);
+					delay = Util.RandomInRange(self.World.SharedRandom, Info.Interval);
 			}
 		}
 
@@ -98,7 +101,7 @@ namespace OpenRA.Mods.Common.Traits.Sound
 			currentSounds.Clear();
 		}
 
-		protected override void TraitEnabled(Actor self) { delay = Util.RandomDelay(self.World, Info.Delay); }
+		protected override void TraitEnabled(Actor self) { delay = Util.RandomInRange(self.World.SharedRandom, Info.Delay); }
 		protected override void TraitDisabled(Actor self) { StopSound(); }
 
 		void INotifyRemovedFromWorld.RemovedFromWorld(Actor self) { StopSound(); }

@@ -1,12 +1,11 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
    the License, or (at your option) any later version. For more
    information, see COPYING.
 ]]
-Difficulty = Map.LobbyOption("difficulty")
 
 UnitsEvacuatedThreshold =
 {
@@ -73,16 +72,9 @@ SovietAirfields =
 	SovietAirfield5, SovietAirfield6, SovietAirfield7, SovietAirfield8
 }
 
-MountainEntry =
-{
-	MountainEntry1.Location, MountainEntry2.Location, MountainEntry3.Location, MountainEntry4.Location,
-	MountainEntry5.Location, MountainEntry6.Location, MountainEntry7.Location, MountainEntry8.Location
-}
+MountainEntry = { CPos.New(25, 45), CPos.New(25, 46), CPos.New(25, 47), CPos.New(25, 48), CPos.New(25, 49) }
 
-BridgeEntry =
-{
-	BridgeEntry1.Location, BridgeEntry2.Location, BridgeEntry3.Location, BridgeEntry4.Location
-}
+BridgeEntry = { CPos.New(25, 29), CPos.New(26, 29), CPos.New(27, 29), CPos.New(28, 29) }
 
 MobileConstructionVehicle = { "mcv" }
 Yak = { "yak" }
@@ -185,17 +177,10 @@ SendSovietParadrop = function()
 	local lz = Map.CenterOfCell(randomParadropCell)
 
 	local powerproxy = Actor.Create("powerproxy.paratroopers", false, { Owner = soviets })
-	powerproxy.SendParatroopers(lz)
+	powerproxy.TargetParatroopers(lz)
 	powerproxy.Destroy()
 
 	Trigger.AfterDelay(sovietParadropTicks, SendSovietParadrop)
-end
-
-IdleHunt = function(unit)
-	Trigger.OnIdle(unit, unit.Hunt)
-	Trigger.OnCapture(unit, function()
-		Trigger.ClearAll(unit)
-	end)
 end
 
 AircraftTargets = function(yak)
@@ -310,26 +295,7 @@ WorldLoaded = function()
 	humans = { allies1, allies2 }
 	Utils.Do(humans, function(player)
 		if player and player.IsLocalPlayer then
-			Trigger.OnObjectiveAdded(player, function(p, id)
-				Media.DisplayMessage(p.GetObjectiveDescription(id), "New " .. string.lower(p.GetObjectiveType(id)) .. " objective")
-			end)
-
-			Trigger.OnObjectiveCompleted(player, function(p, id)
-				Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-			end)
-
-			Trigger.OnObjectiveFailed(player, function(p, id)
-				Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-			end)
-
-			Trigger.OnPlayerWon(player, function()
-				Media.PlaySpeechNotification(player, "MissionAccomplished")
-			end)
-
-			Trigger.OnPlayerLost(player, function()
-				Media.PlaySpeechNotification(player, "MissionFailed")
-			end)
-
+			InitObjectives(player)
 			TextColor = player.Color
 		end
 	end)
@@ -338,9 +304,9 @@ WorldLoaded = function()
 	UserInterface.SetMissionText(UnitsEvacuated .. "/" .. unitsEvacuatedThreshold .. " units evacuated.", TextColor)
 	Utils.Do(humans, function(player)
 		if player then
-			evacuateUnits = player.AddPrimaryObjective("Evacuate " .. unitsEvacuatedThreshold .. " units.")
-			destroyAirbases = player.AddSecondaryObjective("Destroy the nearby Soviet airbases.")
-			evacuateMgg = player.AddSecondaryObjective("Evacuate at least one mobile gap generator.")
+			evacuateUnits = player.AddObjective("Evacuate " .. unitsEvacuatedThreshold .. " units.")
+			destroyAirbases = player.AddObjective("Destroy the nearby Soviet airbases.", "Secondary", false)
+			evacuateMgg = player.AddObjective("Evacuate at least one mobile gap generator.", "Secondary", false)
 		end
 	end)
 
@@ -352,7 +318,7 @@ WorldLoaded = function()
 		end)
 	end)
 
-	sovietObjective = soviets.AddPrimaryObjective("Eradicate all allied troops.")
+	sovietObjective = soviets.AddObjective("Eradicate all allied troops.")
 
 	if not allies2 or allies1.IsLocalPlayer then
 		Camera.Position = Allies1EntryPoint.CenterPosition

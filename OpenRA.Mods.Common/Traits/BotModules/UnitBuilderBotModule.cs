@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -49,8 +49,7 @@ namespace OpenRA.Mods.Common.Traits
 		readonly List<string> queuedBuildRequests = new List<string>();
 
 		IBotRequestPauseUnitProduction[] requestPause;
-
-		List<Actor> idleUnits = new List<Actor>();
+		int idleUnitCount;
 
 		int ticks;
 
@@ -61,14 +60,14 @@ namespace OpenRA.Mods.Common.Traits
 			player = self.Owner;
 		}
 
-		protected override void TraitEnabled(Actor self)
+		protected override void Created(Actor self)
 		{
-			requestPause = player.PlayerActor.TraitsImplementing<IBotRequestPauseUnitProduction>().ToArray();
+			requestPause = self.Owner.PlayerActor.TraitsImplementing<IBotRequestPauseUnitProduction>().ToArray();
 		}
 
 		void IBotNotifyIdleBaseUnits.UpdatedIdleBaseUnits(List<Actor> idleUnits)
 		{
-			this.idleUnits = idleUnits;
+			idleUnitCount = idleUnits.Count;
 		}
 
 		void IBotTick.BotTick(IBot bot)
@@ -88,7 +87,7 @@ namespace OpenRA.Mods.Common.Traits
 				}
 
 				foreach (var q in Info.UnitQueues)
-					BuildUnit(bot, q, idleUnits.Count < Info.IdleBaseUnitsMaximum);
+					BuildUnit(bot, q, idleUnitCount < Info.IdleBaseUnitsMaximum);
 			}
 		}
 
@@ -156,7 +155,7 @@ namespace OpenRA.Mods.Common.Traits
 			if (queue != null)
 			{
 				bot.QueueOrder(Order.StartProduction(queue.Actor, name, 1));
-				AIUtils.BotDebug("AI: {0} decided to build {1} (external request)", queue.Actor.Owner, name);
+				AIUtils.BotDebug("{0} decided to build {1} (external request)", queue.Actor.Owner, name);
 			}
 		}
 
@@ -218,7 +217,7 @@ namespace OpenRA.Mods.Common.Traits
 			return new List<MiniYamlNode>()
 			{
 				new MiniYamlNode("QueuedBuildRequests", FieldSaver.FormatValue(queuedBuildRequests.ToArray())),
-				new MiniYamlNode("IdleUnits", FieldSaver.FormatValue(idleUnits.Select(a => a.ActorID).ToArray()))
+				new MiniYamlNode("IdleUnitCount", FieldSaver.FormatValue(idleUnitCount))
 			};
 		}
 
@@ -234,13 +233,9 @@ namespace OpenRA.Mods.Common.Traits
 				queuedBuildRequests.AddRange(FieldLoader.GetValue<string[]>("QueuedBuildRequests", queuedBuildRequestsNode.Value.Value));
 			}
 
-			var idleUnitsNode = data.FirstOrDefault(n => n.Key == "IdleUnits");
-			if (idleUnitsNode != null)
-			{
-				idleUnits.Clear();
-				idleUnits.AddRange(FieldLoader.GetValue<uint[]>("IdleUnits", idleUnitsNode.Value.Value)
-					.Select(a => world.GetActorById(a)));
-			}
+			var idleUnitCountNode = data.FirstOrDefault(n => n.Key == "IdleUnitCount");
+			if (idleUnitCountNode != null)
+				idleUnitCount = FieldLoader.GetValue<int>("IdleUnitCount", idleUnitCountNode.Value.Value);
 		}
 	}
 }

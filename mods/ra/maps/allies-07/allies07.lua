@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -27,7 +27,7 @@ lstReinforcements =
 	}
 }
 
-if Map.LobbyOption("difficulty") == "easy" then
+if Difficulty == "easy" then
 	ActivateAIDelay = DateTime.Minutes(1)
 else
 	ActivateAIDelay = DateTime.Seconds(30)
@@ -82,10 +82,10 @@ CaptureRadarDome = function()
 end
 
 BaseRaids = function()
-	if Map.LobbyOption("difficulty") == "easy" then
+	if Difficulty == "easy" then
 		return
 	else
-		Trigger.AfterDelay(Utils.RandomInteger(BaseRaidDelay1[1], BaseRaidDelay1[2]), function()	
+		Trigger.AfterDelay(Utils.RandomInteger(BaseRaidDelay1[1], BaseRaidDelay1[2]), function()
 			local raiders = Reinforcements.ReinforceWithTransport(ussr, "lst", RaidingParty, RaidOnePath, { RaidOneEntry.Location })[2]
 			Utils.Do(raiders, function(a)
 				Trigger.OnAddedToWorld(a, function()
@@ -95,7 +95,7 @@ BaseRaids = function()
 			end)
 		end)
 
-		Trigger.AfterDelay(Utils.RandomInteger(BaseRaidDelay2[1], BaseRaidDelay2[2]), function()	
+		Trigger.AfterDelay(Utils.RandomInteger(BaseRaidDelay2[1], BaseRaidDelay2[2]), function()
 			local raiders = Reinforcements.ReinforceWithTransport(ussr, "lst", RaidingParty, RaidTwoPath, { RaidTwoEntry.Location })[2]
 			Utils.Do(raiders, function(a)
 				Trigger.OnAddedToWorld(a, function()
@@ -108,7 +108,7 @@ BaseRaids = function()
 end
 
 StartTimerFunction = function()
-	if Map.LobbyOption("difficulty") == "hard" then
+	if Difficulty == "hard" then
 		StartTimer = true
 		Media.PlaySpeechNotification(greece, "TimerStarted")
 	end
@@ -126,7 +126,7 @@ FinishTimer = function()
 	Trigger.AfterDelay(DateTime.Seconds(6), function() UserInterface.SetMissionText("") end)
 end
 
-BattalionWays = 
+BattalionWays =
 {
 	{ HardEntry1.Location, HardLanding1.Location },
 	{ HardEntry2.Location, HardLanding2.Location },
@@ -138,7 +138,7 @@ BattalionWays =
 
 SendArmoredBattalion = function()
 	Media.PlaySpeechNotification(greece, "EnemyUnitsApproaching")
-	Utils.Do(BattalionWays, function(way) 
+	Utils.Do(BattalionWays, function(way)
 		local units = { "3tnk", "3tnk", "3tnk", "4tnk", "4tnk" }
 		local armor = Reinforcements.ReinforceWithTransport(ussr, "lst", units , way, { way[2], way[1] })[2]
 		Utils.Do(armor, function(a)
@@ -146,7 +146,7 @@ SendArmoredBattalion = function()
 				a.AttackMove(PlayerBase.Location)
 				IdleHunt(a)
 			end)
-		end)	
+		end)
 	end)
 end
 
@@ -185,28 +185,11 @@ WorldLoaded = function()
 
 	Camera.Position = DefaultCameraPosition.CenterPosition
 
-	CaptureRadarDomeObj = greece.AddPrimaryObjective("Capture the Radar Dome.")
-	DestroySubPens = greece.AddPrimaryObjective("Destroy all Soviet Sub Pens")
-	ClearSubActivity = greece.AddSecondaryObjective("Clear the area of all sub activity")
-	BeatAllies = ussr.AddPrimaryObjective("Defeat the Allied forces.")
-
-	Trigger.OnObjectiveCompleted(greece, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-	end)
-	Trigger.OnObjectiveFailed(greece, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-	end)
-
-	Trigger.OnPlayerLost(greece, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(greece, "MissionFailed")
-		end)
-	end)
-	Trigger.OnPlayerWon(greece, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(greece, "MissionAccomplished")
-		end)
-	end)
+	InitObjectives(greece)
+	CaptureRadarDomeObj = greece.AddObjective("Capture the Radar Dome.")
+	DestroySubPens = greece.AddObjective("Destroy all Soviet Sub Pens")
+	ClearSubActivity = greece.AddObjective("Clear the area of all sub activity", "Secondary", false)
+	BeatAllies = ussr.AddObjective("Defeat the Allied forces.")
 
 	PowerProxy = Actor.Create("powerproxy.paratroopers", false, { Owner = ussr })
 
@@ -217,6 +200,6 @@ WorldLoaded = function()
 	Trigger.AfterDelay(ActivateAIDelay, ActivateAI)
 	Trigger.AfterDelay(StartTimerDelay, StartTimerFunction)
 
-	Trigger.OnAllRemovedFromWorld(DestroySubPensTriggerActivator, DestroySubPensCompleted)
+	Trigger.OnAllKilledOrCaptured(DestroySubPensTriggerActivator, DestroySubPensCompleted)
 	Trigger.OnAllRemovedFromWorld(ClearSubActivityTriggerActivator, ClearSubActivityCompleted)
 end

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -34,7 +34,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			var timeOffset = timeLabel.Bounds.X;
 
 			SupportPowerInstance lastPower = null;
-			Hotkey lastHotkey = Hotkey.Invalid;
+			var lastHotkey = Hotkey.Invalid;
 			var lastRemainingSeconds = 0;
 
 			tooltipContainer.BeforeRender = () =>
@@ -47,28 +47,34 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 
 				// HACK: This abuses knowledge of the internals of WidgetUtils.FormatTime
 				// to efficiently work when the label is going to change, requiring a panel relayout
-				var remainingSeconds = (int)Math.Ceiling(sp.RemainingTime * world.Timestep / 1000f);
+				var remainingSeconds = (int)Math.Ceiling(sp.RemainingTicks * world.Timestep / 1000f);
 
-				var hotkey = icon.Hotkey != null ? icon.Hotkey.GetValue() : Hotkey.Invalid;
+				var hotkey = icon.Hotkey?.GetValue() ?? Hotkey.Invalid;
 				if (sp == lastPower && hotkey == lastHotkey && lastRemainingSeconds == remainingSeconds)
 					return;
 
-				nameLabel.Text = sp.Info.Description;
+				nameLabel.Text = sp.Info.Name;
 				var nameSize = nameFont.Measure(nameLabel.Text);
 
-				descLabel.Text = sp.Info.LongDesc.Replace("\\n", "\n");
+				descLabel.Text = sp.Info.Description.Replace("\\n", "\n");
 				var descSize = descFont.Measure(descLabel.Text);
 
-				var remaining = WidgetUtils.FormatTime(sp.RemainingTime, world.Timestep);
-				var total = WidgetUtils.FormatTime(sp.Info.ChargeInterval, world.Timestep);
-				timeLabel.Text = "{0} / {1}".F(remaining, total);
-				var timeSize = timeFont.Measure(timeLabel.Text);
+				var customLabel = sp.TooltipTimeTextOverride();
+				if (customLabel == null)
+				{
+					var remaining = WidgetUtils.FormatTime(sp.RemainingTicks, world.Timestep);
+					var total = WidgetUtils.FormatTime(sp.Info.ChargeInterval, world.Timestep);
+					timeLabel.Text = $"{remaining} / {total}";
+				}
+				else
+					timeLabel.Text = customLabel;
 
+				var timeSize = timeFont.Measure(timeLabel.Text);
 				var hotkeyWidth = 0;
 				hotkeyLabel.Visible = hotkey.IsValid();
 				if (hotkeyLabel.Visible)
 				{
-					var hotkeyText = "({0})".F(hotkey.DisplayString());
+					var hotkeyText = $"({hotkey.DisplayString()})";
 
 					hotkeyWidth = hotkeyFont.Measure(hotkeyText).X + 2 * nameLabel.Bounds.X;
 					hotkeyLabel.Text = hotkeyText;

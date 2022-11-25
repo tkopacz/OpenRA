@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -21,8 +21,7 @@ namespace OpenRA.Mods.Common
 		/// /// </summary>
 		public static Target RecalculateInvalidatingHiddenTargets(this Target t, Player viewer)
 		{
-			bool targetIsHiddenActor;
-			var updated = t.Recalculate(viewer, out targetIsHiddenActor);
+			var updated = t.Recalculate(viewer, out bool targetIsHiddenActor);
 			return targetIsHiddenActor ? Target.Invalid : updated;
 		}
 
@@ -42,7 +41,20 @@ namespace OpenRA.Mods.Common
 
 			// Bot-controlled units aren't yet capable of understanding visibility changes
 			if (viewer.IsBot)
+			{
+				// Prevent that bot-controlled units endlessly fire at frozen actors.
+				// TODO: Teach the AI to support long range artillery units with units that provide line of sight
+				if (t.Type == TargetType.FrozenActor)
+				{
+					if (t.FrozenActor.Actor != null)
+						return Target.FromActor(t.FrozenActor.Actor);
+
+					// Original actor was killed
+					return Target.Invalid;
+				}
+
 				return t;
+			}
 
 			if (t.Type == TargetType.Actor)
 			{
@@ -68,8 +80,7 @@ namespace OpenRA.Mods.Common
 						return Target.FromActor(t.FrozenActor.Actor);
 
 					// Original actor was killed while hidden
-					if (t.Actor == null)
-						return Target.Invalid;
+					return Target.Invalid;
 				}
 			}
 

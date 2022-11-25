@@ -1,49 +1,49 @@
 Container@MULTIPLAYER_PANEL:
 	Logic: MultiplayerLogic
 	X: (WINDOW_RIGHT - WIDTH) / 2
-	Y: (WINDOW_BOTTOM - 560) / 2
-	Width: 800
-	Height: 575
+	Y: (WINDOW_BOTTOM - HEIGHT) / 2
+	Width: 900
+	Height: 540
 	Children:
 		Label@TITLE:
 			Text: Multiplayer
 			Width: PARENT_RIGHT
-			Y: 0 - 25
+			Y: 0 - 22
 			Font: BigBold
 			Contrast: true
 			Align: Center
 		Background@bg:
 			Width: PARENT_RIGHT
-			Height: PARENT_BOTTOM - 35
+			Height: PARENT_BOTTOM
 			Background: panel-black
 			Children:
 				Container@LABEL_CONTAINER:
 					X: 15
-					Y: 5
+					Y: 6
 					Width: PARENT_RIGHT
 					Height: PARENT_BOTTOM
 					Children:
 						Label@NAME:
 							X: 5
-							Width: 255
+							Width: 355
 							Height: 25
 							Text: Server
 							Align: Center
 							Font: Bold
 						Label@PLAYERS:
-							X: 290
+							X: 390
 							Width: 85
 							Height: 25
 							Text: Players
 							Font: Bold
 						Label@LOCATION:
-							X: 380
+							X: 480
 							Width: 110
 							Height: 25
 							Text: Location
 							Font: Bold
 						Label@STATUS:
-							X: 495
+							X: 595
 							Width: 50
 							Height: 25
 							Text: Status
@@ -52,7 +52,7 @@ Container@MULTIPLAYER_PANEL:
 				Container@NOTICE_CONTAINER:
 					X: 15
 					Y: 30
-					Width: 582
+					Width: 682
 					Height: 19
 					Children:
 						Background@bg:
@@ -63,39 +63,39 @@ Container@MULTIPLAYER_PANEL:
 								Label@OUTDATED_VERSION_LABEL:
 									X: 5
 									Width: PARENT_RIGHT-10
-									Height: 18
+									Height: 20
 									Align: Center
 									Text: You are running an outdated version of OpenRA. Download the latest version from www.openra.net
 									Font: TinyBold
 								Label@UNKNOWN_VERSION_LABEL:
 									X: 5
 									Width: PARENT_RIGHT-10
-									Height: 18
+									Height: 20
 									Align: Center
 									Text: You are running an unrecognized version of OpenRA. Download the latest version from www.openra.net
 									Font: TinyBold
 								Label@PLAYTEST_AVAILABLE_LABEL:
 									X: 5
 									Width: PARENT_RIGHT-10
-									Height: 18
+									Height: 20
 									Align: Center
 									Text: A preview of the next OpenRA release is available for testing. Download the playtest from www.openra.net
 									Font: TinyBold
 				ScrollPanel@SERVER_LIST:
 					X: 15
 					Y: 30
-					Width: 582
+					Width: 682
 					Height: PARENT_BOTTOM - 75
 					TopBottomSpacing: 2
 					Children:
 						ScrollItem@HEADER_TEMPLATE:
+							Background: scrollheader
 							Width: PARENT_RIGHT - 27
 							Height: 20
 							X: 2
 							Visible: false
 							Children:
 								Label@LABEL:
-									Y: 0 - 1
 									Font: TinyBold
 									Width: PARENT_RIGHT
 									Height: 20
@@ -108,12 +108,12 @@ Container@MULTIPLAYER_PANEL:
 							Children:
 								LabelWithTooltip@TITLE:
 									X: 5
-									Width: 245
+									Width: 345
 									Height: 25
 									TooltipContainer: TOOLTIP_CONTAINER
 									TooltipTemplate: SIMPLE_TOOLTIP
 								Image@PASSWORD_PROTECTED:
-									X: 272
+									X: 372
 									Y: 6
 									Width: 12
 									Height: 13
@@ -122,7 +122,7 @@ Container@MULTIPLAYER_PANEL:
 									TooltipTemplate: SIMPLE_TOOLTIP
 									TooltipText: Requires Password
 								Image@REQUIRES_AUTHENTICATION:
-									X: 272
+									X: 372
 									Y: 6
 									Width: 12
 									Height: 13
@@ -131,23 +131,23 @@ Container@MULTIPLAYER_PANEL:
 									TooltipTemplate: SIMPLE_TOOLTIP
 									TooltipText: Requires OpenRA forum account
 								LabelWithTooltip@PLAYERS:
-									X: 290
+									X: 390
 									Width: 85
 									Height: 25
 									TooltipContainer: TOOLTIP_CONTAINER
 									TooltipTemplate: SIMPLE_TOOLTIP
 								Label@LOCATION:
-									X: 380
+									X: 480
 									Width: 110
 									Height: 25
 								Label@STATUS:
-									X: 495
+									X: 595
 									Width: 50
 									Height: 25
 				Label@PROGRESS_LABEL:
 					X: 15
-					Y: 30 + (PARENT_BOTTOM - 75 - HEIGHT) / 2
-					Width: 582
+					Y: 31 + (PARENT_BOTTOM - 75 - HEIGHT) / 2
+					Width: 682
 					Height: 25
 					Font: Bold
 					Align: Center
@@ -169,32 +169,34 @@ Container@MULTIPLAYER_PANEL:
 									Width: PARENT_RIGHT - 2
 									Height: PARENT_BOTTOM - 2
 									TooltipContainer: TOOLTIP_CONTAINER
-						Label@SELECTED_MAP:
-							Y: 172
+						LabelWithTooltip@SELECTED_MAP:
+							Y: 173
 							Width: PARENT_RIGHT
 							Height: 25
 							Font: Bold
 							Align: Center
+							TooltipContainer: TOOLTIP_CONTAINER
+							TooltipTemplate: SIMPLE_TOOLTIP
 						Label@SELECTED_IP:
-							Y: 187
+							Y: 188
 							Width: PARENT_RIGHT
 							Height: 25
 							Font: Tiny
 							Align: Center
 						Label@SELECTED_STATUS:
-							Y: 203
+							Y: 204
 							Width: PARENT_RIGHT
 							Height: 25
 							Font: TinyBold
 							Align: Center
 						Label@SELECTED_MOD_VERSION:
-							Y: 216
+							Y: 217
 							Width: PARENT_RIGHT
 							Height: 25
 							Font: Tiny
 							Align: Center
 						Label@SELECTED_PLAYERS:
-							Y: 229
+							Y: 230
 							Width: PARENT_RIGHT
 							Height: 25
 							Font: TinyBold
@@ -232,20 +234,20 @@ Container@MULTIPLAYER_PANEL:
 							Children:
 								LogicTicker@ANIMATION:
 				Label@PLAYER_COUNT:
-					X: 198
+					X: 248
 					Y: PARENT_BOTTOM - 40
 					Width: 189
 					Height: 25
 					Align: Center
 					Font: Bold
 				Button@DIRECTCONNECT_BUTTON:
-					X: 387
+					X: 487
 					Y: PARENT_BOTTOM - 40
 					Width: 100
 					Height: 25
 					Text: Direct IP
 				Button@CREATE_BUTTON:
-					X: 492
+					X: 592
 					Y: PARENT_BOTTOM - 40
 					Width: 105
 					Height: 25
@@ -253,7 +255,7 @@ Container@MULTIPLAYER_PANEL:
 		Button@BACK_BUTTON:
 			Key: escape
 			X: 0
-			Y: PARENT_BOTTOM - 36
+			Y: PARENT_BOTTOM - 1
 			Width: 140
 			Height: 35
 			Text: Back

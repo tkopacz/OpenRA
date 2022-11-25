@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -12,7 +12,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Mods.Common.Traits;
-using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common
@@ -37,35 +36,33 @@ namespace OpenRA.Mods.Common
 
 		public static bool AppearsFriendlyTo(this Actor self, Actor toActor)
 		{
-			var stance = toActor.Owner.Stances[self.Owner];
-			if (stance == Stance.Ally)
+			var stance = toActor.Owner.RelationshipWith(self.Owner);
+			if (stance == PlayerRelationship.Ally)
 				return true;
 
 			if (self.EffectiveOwner != null && self.EffectiveOwner.Disguised && !toActor.Info.HasTraitInfo<IgnoresDisguiseInfo>())
-				return toActor.Owner.Stances[self.EffectiveOwner.Owner] == Stance.Ally;
+				return toActor.Owner.RelationshipWith(self.EffectiveOwner.Owner) == PlayerRelationship.Ally;
 
 			return false;
 		}
 
 		public static bool AppearsHostileTo(this Actor self, Actor toActor)
 		{
-			var stance = toActor.Owner.Stances[self.Owner];
-			if (stance == Stance.Ally)
-				return false;		/* otherwise, we'll hate friendly disguised spies */
+			var stance = toActor.Owner.RelationshipWith(self.Owner);
+			if (stance == PlayerRelationship.Ally)
+				return false;
 
 			if (self.EffectiveOwner != null && self.EffectiveOwner.Disguised && !toActor.Info.HasTraitInfo<IgnoresDisguiseInfo>())
-				return toActor.Owner.Stances[self.EffectiveOwner.Owner] == Stance.Enemy;
+				return toActor.Owner.RelationshipWith(self.EffectiveOwner.Owner) == PlayerRelationship.Enemy;
 
-			return stance == Stance.Enemy;
+			return stance == PlayerRelationship.Enemy;
 		}
 
 		public static void NotifyBlocker(this Actor self, IEnumerable<Actor> blockers)
 		{
 			foreach (var blocker in blockers)
-			{
 				foreach (var moveBlocked in blocker.TraitsImplementing<INotifyBlockingMove>())
 					moveBlocked.OnNotifyBlockingMove(blocker, self);
-			}
 		}
 
 		public static void NotifyBlocker(this Actor self, CPos position)

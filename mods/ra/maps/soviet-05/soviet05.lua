@@ -1,11 +1,12 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
    the License, or (at your option) any later version. For more
    information, see COPYING.
 ]]
+
 CheckForBase = function()
 	baseBuildings = Map.ActorsInBox(Map.TopLeft, CFBPoint.CenterPosition, function(actor)
 		return actor.Type == "fact" or actor.Type == "powr"
@@ -27,7 +28,7 @@ CheckForSPen = function()
 end
 
 RunInitialActivities = function()
-	if Map.LobbyOption("difficulty") == "hard" then
+	if Difficulty == "hard" then
 		Expand()
 		ExpansionCheck = true
 	else
@@ -36,7 +37,6 @@ RunInitialActivities = function()
 
 	Trigger.AfterDelay(1, function()
 		Harvester.FindResources()
-		Helper.Destroy()
 		IdlingUnits()
 		Media.PlaySpeechNotification(player, "ReinforcementsArrived")
 
@@ -65,7 +65,7 @@ RunInitialActivities = function()
 	ProduceInfantry()
 	Trigger.AfterDelay(DateTime.Minutes(2), ProduceShips)
 
-	if Map.LobbyOption("difficulty") == "hard" or Map.LobbyOption("difficulty") == "normal" then
+	if Difficulty == "hard" or Difficulty == "normal" then
 		Trigger.AfterDelay(DateTime.Seconds(25), ReinfInf)
 	end
 	Trigger.AfterDelay(DateTime.Minutes(2), ReinfInf)
@@ -75,67 +75,56 @@ RunInitialActivities = function()
 end
 
 Expand = function()
-	if ExpansionCheck then
-		return
-	elseif mcvtransport.IsDead then
-		return
-	elseif mcvGG.IsDead then
+	if ExpansionCheck or mcvtransport.IsDead or mcvGG.IsDead then
 		return
 	end
 
-	mcvGG.Move(mcvGGLoadPoint.Location)
-	mcvtransport.Move(lstBeachPoint.Location)
+	ExpansionCheck = true
+	Trigger.ClearAll(mcvGG)
+	Trigger.ClearAll(mcvtransport)
 	Media.DisplayMessage("Allied MCV detected moving to the island.")
 
 	Reinforcements.Reinforce(GoodGuy, { "dd", "dd" }, ShipArrivePath, 0, function(ddsquad)
 		ddsquad.AttackMove(NearExpPoint.Location) end)
 
-	ExpansionCheck = true
-	Trigger.ClearAll(mcvGG)
-	Trigger.ClearAll(mcvtransport)
-	Trigger.AfterDelay(DateTime.Seconds(3), function()
-		if mcvtransport.IsDead then
-			return
-		elseif mcvGG.IsDead then
+
+	mcvtransport.Move(lstBeachPoint.Location)
+
+	mcvGG.Move(mcvGGLoadPoint.Location)
+	mcvGG.EnterTransport(mcvtransport)
+
+	Trigger.AfterDelay(DateTime.Seconds(5), function()
+		if mcvtransport.IsDead or mcvGG.IsDead then
 			return
 		end
 
-		mcvGG.EnterTransport(mcvtransport)
 		mcvtransport.Move(GGUnloadPoint.Location)
 		mcvtransport.UnloadPassengers()
-		Trigger.AfterDelay(DateTime.Seconds(12), function()
+		mcvtransport.CallFunc(function()
 			if mcvGG.IsDead then
 				return
 			end
 
 			mcvGG.Move(MCVDeploy.Location)
-			Trigger.AfterDelay(DateTime.Seconds(4), function()
-				if not mcvGG.IsDead then
-					mcvGG.Deploy()
-					Trigger.AfterDelay(DateTime.Seconds(4), function()
-						local fact = Map.ActorsInBox(mcvGGLoadPoint.CenterPosition, ReinfEastPoint.CenterPosition, function(actor)
-							return actor.Type == "fact" and actor.Owner == GoodGuy end)
-						if #fact == 0 then
-							return
-						else
-							Trigger.OnDamaged(fact[1], function()
-								if fact[1].Owner == GoodGuy and fact[1].Health < fact[1].MaxHealth * 3/4 then
-									fact[1].StartBuildingRepairs()
-								end
-							end)
-						end
-					end)
+			mcvGG.CallFunc(function()
+
+				-- Avoid crashing through modifying the actor list from mcvGG's tick
+				Trigger.AfterDelay(0, function()
+					mcvGG.Owner = GoodGuy
 
 					IslandTroops1()
 					Trigger.AfterDelay(DateTime.Minutes(3), IslandTroops2)
 					Trigger.AfterDelay(DateTime.Minutes(6), IslandTroops3)
-					Trigger.AfterDelay(DateTime.Seconds(7), BuildBase)
-				end
 
-				if not mcvtransport.IsDead then
-					mcvtransport.Move(ReinfNorthPoint.Location)
-					mcvtransport.Destroy()
-				end
+					if not mcvtransport.IsDead then
+						mcvtransport.Move(ReinfNorthPoint.Location)
+						mcvtransport.Destroy()
+					end
+				end)
+
+				Trigger.AfterDelay(DateTime.Seconds(1), function()
+					GoodGuy.GrantCondition("ai-active")
+				end)
 			end)
 		end)
 	end)
@@ -182,9 +171,9 @@ Tick = function()
 
 	if not RCheck then
 		RCheck = true
-		if Map.LobbyOption("difficulty") == "easy" and ReinfCheck then
+		if Difficulty == "easy" and ReinfCheck then
 			Trigger.AfterDelay(DateTime.Minutes(6), ReinfArmor)
-		elseif Map.LobbyOption("difficulty") == "normal" then
+		elseif Difficulty == "normal" then
 			Trigger.AfterDelay(DateTime.Minutes(4), ReinfArmor)
 		else
 			Trigger.AfterDelay(DateTime.Minutes(3), ReinfArmor)
@@ -197,20 +186,11 @@ WorldLoaded = function()
 	GoodGuy = Player.GetPlayer("GoodGuy")
 	Greece = Player.GetPlayer("Greece")
 
-	Trigger.OnObjectiveAdded(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "New " .. string.lower(p.GetObjectiveType(id)) .. " objective")
-	end)
-	Trigger.OnObjectiveCompleted(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-		Media.PlaySpeechNotification(player, "ObjectiveMet")
-	end)
-	Trigger.OnObjectiveFailed(player, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-	end)
+	InitObjectives(player)
 
-	CaptureObjective = player.AddPrimaryObjective("Capture the Radar Dome.")
-	KillAll = player.AddPrimaryObjective("Defeat the Allied forces.")
-	BeatUSSR = GoodGuy.AddPrimaryObjective("Defeat the Soviet forces.")
+	CaptureObjective = player.AddObjective("Capture the Radar Dome.")
+	KillAll = player.AddObjective("Defeat the Allied forces.")
+	BeatUSSR = GoodGuy.AddObjective("Defeat the Soviet forces.")
 
 	RunInitialActivities()
 
@@ -234,10 +214,10 @@ WorldLoaded = function()
 			return
 		end
 
-		HoldObjective = player.AddPrimaryObjective("Defend the Radar Dome.")
+		HoldObjective = player.AddObjective("Defend the Radar Dome.")
 		player.MarkCompletedObjective(CaptureObjective)
 		Beacon.New(player, MCVDeploy.CenterPosition)
-		if Map.LobbyOption("difficulty") == "easy" then
+		if Difficulty == "easy" then
 			Actor.Create("camera", true, { Owner = player, Location = MCVDeploy.Location })
 			Media.DisplayMessage("Movement of an Allied expansion base discovered.")
 		else
@@ -266,8 +246,6 @@ WorldLoaded = function()
 			Trigger.RemoveProximityTrigger(id)
 
 			Para2()
-			ProduceInfantryGG()
-			ProduceTanksGG()
 
 			local units = Reinforcements.ReinforceWithTransport(player, "lst", SovietMCVReinf, { ReinfSouthPoint.Location, USSRlstPoint.Location }, { ReinfSouthPoint.Location })[2]
 			Utils.Do(units, function(unit)
@@ -282,14 +260,6 @@ WorldLoaded = function()
 
 			Media.PlaySpeechNotification(player, "ReinforcementsArrived")
 		end
-	end)
-
-	Trigger.OnPlayerLost(player, function()
-		Media.PlaySpeechNotification(player, "Lose")
-	end)
-
-	Trigger.OnPlayerWon(player, function()
-		Media.PlaySpeechNotification(player, "Win")
 	end)
 
 	Camera.Position = StartCamPoint.CenterPosition

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,21 +9,23 @@
  */
 #endregion
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Effects;
+using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("Allows bridges to be targeted for demolition and repair.")]
-	class BridgeHutInfo : IDemolishableInfo, ITraitInfo
+	public class BridgeHutInfo : TraitInfo, IDemolishableInfo
 	{
 		[Desc("Bridge types to act on")]
 		public readonly string[] Types = { "GroundLevelBridge" };
 
 		[Desc("Offsets to look for adjacent bridges to act on")]
-		public readonly CVec[] NeighbourOffsets = { };
+		public readonly CVec[] NeighbourOffsets = Array.Empty<CVec>();
 
 		[Desc("Delay between each segment repair step")]
 		public readonly int RepairPropagationDelay = 20;
@@ -36,10 +38,10 @@ namespace OpenRA.Mods.Common.Traits
 
 		public bool IsValidTarget(ActorInfo actorInfo, Actor saboteur) { return false; } // TODO: bridges don't support frozen under fog
 
-		public object Create(ActorInitializer init) { return new BridgeHut(init.World, this); }
+		public override object Create(ActorInitializer init) { return new BridgeHut(init.World, this); }
 	}
 
-	class BridgeHut : INotifyCreated, IDemolishable, ITick
+	public class BridgeHut : INotifyCreated, IDemolishable, ITick
 	{
 		public readonly BridgeHutInfo Info;
 		readonly BridgeLayer bridgeLayer;
@@ -60,6 +62,7 @@ namespace OpenRA.Mods.Common.Traits
 		int demolishStep;
 		int demolishDelay;
 		Actor demolishSaboteur;
+		BitSet<DamageType> demolishDamageTypes;
 
 		public BridgeHut(World world, BridgeHutInfo info)
 		{
@@ -84,7 +87,7 @@ namespace OpenRA.Mods.Common.Traits
 				while (true)
 				{
 					var step = NextNeighbourStep(seed, processed).ToList();
-					if (!step.Any())
+					if (step.Count == 0)
 						break;
 
 					foreach (var s in step)
@@ -130,7 +133,7 @@ namespace OpenRA.Mods.Common.Traits
 			}
 		}
 
-		public void Repair(Actor self, Actor repairer)
+		public void Repair(Actor repairer)
 		{
 			if (Info.RepairPropagationDelay > 0)
 			{
@@ -170,7 +173,7 @@ namespace OpenRA.Mods.Common.Traits
 			return true;
 		}
 
-		void IDemolishable.Demolish(Actor self, Actor saboteur, int delay)
+		void IDemolishable.Demolish(Actor self, Actor saboteur, int delay, BitSet<DamageType> damageTypes)
 		{
 			// TODO: Handle using ITick
 			self.World.Add(new DelayedAction(delay, () =>
@@ -188,11 +191,12 @@ namespace OpenRA.Mods.Common.Traits
 					{
 						demolishStep = 0;
 						demolishSaboteur = saboteur;
+						demolishDamageTypes = damageTypes;
 						DemolishStep();
 					}
 					else
 						foreach (var s in segments.Values)
-							s.Demolish(saboteur);
+							s.Demolish(saboteur, damageTypes);
 				}
 			}));
 		}
@@ -214,7 +218,7 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (demolishStep < segmentLocations.Count)
 				foreach (var c in segmentLocations[demolishStep])
-					segments[c].Demolish(demolishSaboteur);
+					segments[c].Demolish(demolishSaboteur, demolishDamageTypes);
 
 			demolishDelay = Info.DemolishPropagationDelay;
 
@@ -226,13 +230,13 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			get
 			{
-				if (!segments.Any())
+				if (segments.Count == 0)
 					return DamageState.Undamaged;
 
 				return segments.Values.Max(s => s.DamageState);
 			}
 		}
 
-		public bool Repairing { get { return repairStep < segmentLocations.Count; } }
+		public bool Repairing => repairStep < segmentLocations.Count;
 	}
 }

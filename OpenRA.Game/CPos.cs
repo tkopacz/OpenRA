@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -16,7 +16,7 @@ using OpenRA.Scripting;
 
 namespace OpenRA
 {
-	public struct CPos : IScriptBindable, ILuaAdditionBinding, ILuaSubtractionBinding, ILuaEqualityBinding, ILuaTableBinding, IEquatable<CPos>
+	public readonly struct CPos : IScriptBindable, ILuaAdditionBinding, ILuaSubtractionBinding, ILuaEqualityBinding, ILuaTableBinding, IEquatable<CPos>
 	{
 		// Coordinates are packed in a 32 bit signed int
 		// X and Y are 12 bits (signed): -2048...2047
@@ -25,13 +25,13 @@ namespace OpenRA
 		public readonly int Bits;
 
 		// X is padded to MSB, so bit shift does the correct sign extension
-		public int X { get { return Bits >> 20; } }
+		public int X => Bits >> 20;
 
 		// Align Y with a short, cast, then shift the rest of the way
 		// The signed short bit shift does the correct sign extension
-		public int Y { get { return ((short)(Bits >> 4)) >> 4; } }
+		public int Y => ((short)(Bits >> 4)) >> 4;
 
-		public byte Layer { get { return (byte)Bits; } }
+		public byte Layer => (byte)Bits;
 
 		public CPos(int bits) { Bits = bits; }
 		public CPos(int x, int y)
@@ -58,7 +58,13 @@ namespace OpenRA
 		public bool Equals(CPos other) { return Bits == other.Bits; }
 		public override bool Equals(object obj) { return obj is CPos && Equals((CPos)obj); }
 
-		public override string ToString() { return X + "," + Y; }
+		public override string ToString()
+		{
+			if (Layer == 0)
+				return X + "," + Y;
+
+			return X + "," + Y + "," + Layer;
+		}
 
 		public MPos ToMPos(Map map)
 		{
@@ -89,41 +95,35 @@ namespace OpenRA
 
 		public LuaValue Add(LuaRuntime runtime, LuaValue left, LuaValue right)
 		{
-			CPos a;
-			CVec b;
-			if (!left.TryGetClrValue(out a) || !right.TryGetClrValue(out b))
-				throw new LuaException("Attempted to call CPos.Add(CPos, CVec) with invalid arguments ({0}, {1})".F(left.WrappedClrType().Name, right.WrappedClrType().Name));
+			if (!left.TryGetClrValue(out CPos a) || !right.TryGetClrValue(out CVec b))
+				throw new LuaException($"Attempted to call CPos.Add(CPos, CVec) with invalid arguments ({left.WrappedClrType().Name}, {right.WrappedClrType().Name})");
 
 			return new LuaCustomClrObject(a + b);
 		}
 
 		public LuaValue Subtract(LuaRuntime runtime, LuaValue left, LuaValue right)
 		{
-			CPos a;
 			var rightType = right.WrappedClrType();
-			if (!left.TryGetClrValue(out a))
-				throw new LuaException("Attempted to call CPos.Subtract(CPos, (CPos|CVec)) with invalid arguments ({0}, {1})".F(left.WrappedClrType().Name, rightType.Name));
+			if (!left.TryGetClrValue(out CPos a))
+				throw new LuaException($"Attempted to call CPos.Subtract(CPos, (CPos|CVec)) with invalid arguments ({left.WrappedClrType().Name}, {rightType.Name})");
 
 			if (rightType == typeof(CPos))
 			{
-				CPos b;
-				right.TryGetClrValue(out b);
+				right.TryGetClrValue(out CPos b);
 				return new LuaCustomClrObject(a - b);
 			}
 			else if (rightType == typeof(CVec))
 			{
-				CVec b;
-				right.TryGetClrValue(out b);
+				right.TryGetClrValue(out CVec b);
 				return new LuaCustomClrObject(a - b);
 			}
 
-			throw new LuaException("Attempted to call CPos.Subtract(CPos, (CPos|CVec)) with invalid arguments ({0}, {1})".F(left.WrappedClrType().Name, rightType.Name));
+			throw new LuaException($"Attempted to call CPos.Subtract(CPos, (CPos|CVec)) with invalid arguments ({left.WrappedClrType().Name}, {rightType.Name})");
 		}
 
 		public LuaValue Equals(LuaRuntime runtime, LuaValue left, LuaValue right)
 		{
-			CPos a, b;
-			if (!left.TryGetClrValue(out a) || !right.TryGetClrValue(out b))
+			if (!left.TryGetClrValue(out CPos a) || !right.TryGetClrValue(out CPos b))
 				return false;
 
 			return a == b;
@@ -138,14 +138,11 @@ namespace OpenRA
 					case "X": return X;
 					case "Y": return Y;
 					case "Layer": return Layer;
-					default: throw new LuaException("CPos does not define a member '{0}'".F(key));
+					default: throw new LuaException($"CPos does not define a member '{key}'");
 				}
 			}
 
-			set
-			{
-				throw new LuaException("CPos is read-only. Use CPos.New to create a new value");
-			}
+			set => throw new LuaException("CPos is read-only. Use CPos.New to create a new value");
 		}
 
 		#endregion

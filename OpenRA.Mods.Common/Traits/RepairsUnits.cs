@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,6 +9,7 @@
  */
 #endregion
 
+using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
@@ -23,13 +24,22 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Time (in ticks) between two repair steps.")]
 		public readonly int Interval = 24;
 
-		[NotificationReference("Speech")]
-		[Desc("The sound played when starting to repair a unit.")]
-		public readonly string StartRepairingNotification = null;
+		[Desc("Damage types used for the repair.")]
+		public readonly BitSet<DamageType> RepairDamageTypes = default;
 
 		[NotificationReference("Speech")]
-		[Desc("The sound played when repairing a unit is done.")]
+		[Desc("Speech notification played when starting to repair a unit.")]
+		public readonly string StartRepairingNotification = null;
+
+		[Desc("Text notification displayed when starting to repair a unit.")]
+		public readonly string StartRepairingTextNotification = null;
+
+		[NotificationReference("Speech")]
+		[Desc("Speech notification played when repairing a unit is done.")]
 		public readonly string FinishRepairingNotification = null;
+
+		[Desc("Text notification displayed when repairing a unit is done.")]
+		public readonly string FinishRepairingTextNotification = null;
 
 		[Desc("Experience gained by the player owning this actor for repairing an allied unit.")]
 		public readonly int PlayerExperience = 0;

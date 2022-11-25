@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -26,7 +26,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 		readonly WorldRenderer worldRenderer;
 
-		IActorPreview[] preview = new IActorPreview[0];
+		IActorPreview[] preview = Array.Empty<IActorPreview>();
 		public int2 PreviewOffset { get; private set; }
 		public int2 IdealPreviewSize { get; private set; }
 
@@ -53,53 +53,31 @@ namespace OpenRA.Mods.Common.Widgets
 				.ToArray();
 
 			// Calculate the preview bounds
-			PreviewOffset = int2.Zero;
-			IdealPreviewSize = int2.Zero;
-
 			var r = preview.SelectMany(p => p.ScreenBounds(worldRenderer, WPos.Zero));
-
-			if (r.Any())
-			{
-				var b = r.First();
-				foreach (var rr in r.Skip(1))
-					b = Rectangle.Union(b, rr);
-
-				IdealPreviewSize = new int2(b.Width, b.Height);
-				PreviewOffset = -new int2(b.Left, b.Top) - IdealPreviewSize / 2;
-			}
+			var b = r.Union();
+			IdealPreviewSize = new int2(b.Width, b.Height);
+			PreviewOffset = -new int2(b.Left, b.Top) - IdealPreviewSize / 2;
 		}
 
 		IFinalizedRenderable[] renderables;
 		public override void PrepareRenderables()
 		{
+			var scale = GetScale();
+			var origin = RenderOrigin + PreviewOffset + new int2(RenderBounds.Size.Width / 2, RenderBounds.Size.Height / 2);
+
 			renderables = preview
-				.SelectMany(p => p.Render(worldRenderer, WPos.Zero))
-				.OrderBy(WorldRenderer.RenderableScreenZPositionComparisonKey)
+				.SelectMany(p => p.RenderUI(worldRenderer, origin, scale))
+				.OrderBy(WorldRenderer.RenderableZPositionComparisonKey)
 				.Select(r => r.PrepareRender(worldRenderer))
 				.ToArray();
 		}
 
 		public override void Draw()
 		{
-			// HACK: The split between world and UI shaders is a giant PITA because it isn't
-			// feasible to maintain two parallel sets of renderables for the two cases.
-			// Instead, we temporarily hijack the world rendering context and set the position
-			// and zoom values to give the desired screen position and size.
-			var scale = GetScale();
-			var origin = RenderOrigin + new int2(RenderBounds.Size.Width / 2, RenderBounds.Size.Height / 2);
-
-			// The scale affects world -> screen transform, which we don't want when drawing the (fixed) UI.
-			if (scale != 1f)
-				origin = (1f / scale * origin.ToFloat2()).ToInt2();
-
-			Game.Renderer.Flush();
-			Game.Renderer.SetViewportParams(-origin - PreviewOffset, scale);
-
+			Game.Renderer.EnableAntialiasingFilter();
 			foreach (var r in renderables)
 				r.Render(worldRenderer);
-
-			Game.Renderer.Flush();
-			Game.Renderer.SetViewportParams(worldRenderer.Viewport.TopLeft, worldRenderer.Viewport.Zoom);
+			Game.Renderer.DisableAntialiasingFilter();
 		}
 
 		public override void Tick()

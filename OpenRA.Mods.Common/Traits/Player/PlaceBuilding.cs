@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -16,22 +16,33 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Traits
 {
 	// Allows third party mods to detect whether an actor was created by PlaceBuilding.
-	public class PlaceBuildingInit : IActorInit { }
+	public class PlaceBuildingInit : RuntimeFlagInit { }
 
+	[TraitLocation(SystemActors.Player)]
 	[Desc("Allows the player to execute build orders.", " Attach this to the player actor.")]
-	public class PlaceBuildingInfo : ITraitInfo
+	public class PlaceBuildingInfo : TraitInfo
 	{
 		[Desc("Play NewOptionsNotification this many ticks after building placement.")]
 		public readonly int NewOptionsNotificationDelay = 10;
 
 		[NotificationReference("Speech")]
-		[Desc("Notification to play after building placement if new construction options are available.")]
+		[Desc("Speech notification to play after building placement if new construction options are available.")]
 		public readonly string NewOptionsNotification = null;
 
+		[Desc("Text notification to display after building placement if new construction options are available.")]
+		public readonly string NewOptionsTextNotification = null;
+
 		[NotificationReference("Speech")]
+		[Desc("Speech notification to play if building placement is not possible.")]
 		public readonly string CannotPlaceNotification = null;
 
-		public object Create(ActorInitializer init) { return new PlaceBuilding(this); }
+		[Desc("Text notification to display if building placement is not possible.")]
+		public readonly string CannotPlaceTextNotification = null;
+
+		[Desc("Hotkey to toggle between PlaceBuildingVariants when placing a structure.")]
+		public readonly HotkeyReference ToggleVariantKey = new HotkeyReference();
+
+		public override object Create(ActorInitializer init) { return new PlaceBuilding(this); }
 	}
 
 	public class PlaceBuilding : IResolveOrder, ITick
@@ -75,18 +86,40 @@ namespace OpenRA.Mods.Common.Traits
 				if (item == null)
 					return;
 
+				// Override with the alternate actor
+				if (order.ExtraLocation.X > 0)
+				{
+					var variant = actorInfo.TraitInfos<PlaceBuildingVariantsInfo>()
+						.SelectMany(p => p.Actors)
+						.Skip(order.ExtraLocation.X - 1)
+						.FirstOrDefault();
+
+					if (variant != null)
+						actorInfo = self.World.Map.Rules.Actors[variant];
+				}
+
 				var producer = queue.MostLikelyProducer();
-				var faction = producer.Trait != null ? producer.Trait.Faction : self.Owner.Faction.InternalName;
+				var faction = producer.Trait?.Faction ?? self.Owner.Faction.InternalName;
 				var buildingInfo = actorInfo.TraitInfo<BuildingInfo>();
 
 				var buildableInfo = actorInfo.TraitInfoOrDefault<BuildableInfo>();
 				if (buildableInfo != null && buildableInfo.ForceFaction != null)
 					faction = buildableInfo.ForceFaction;
 
+				var replaceableTypes = actorInfo.TraitInfos<ReplacementInfo>()
+					.SelectMany(r => r.ReplaceableTypes)
+					.ToHashSet();
+
+				if (replaceableTypes.Count > 0)
+					foreach (var t in buildingInfo.Tiles(targetLocation))
+						foreach (var a in self.World.ActorMap.GetActorsAt(t))
+							if (a.TraitsImplementing<Replaceable>().Any(r => !r.IsTraitDisabled && r.Info.Types.Overlaps(replaceableTypes)))
+								self.World.Remove(a);
+
 				if (os == "LineBuild")
 				{
 					// Build the parent actor first
-					var placed = w.CreateActor(order.TargetString, new TypeDictionary
+					var placed = w.CreateActor(actorInfo.Name, new TypeDictionary
 					{
 						new LocationInit(targetLocation),
 						new OwnerInit(order.Player),
@@ -100,44 +133,56 @@ namespace OpenRA.Mods.Common.Traits
 					// Build the connection segments
 					var segmentType = actorInfo.TraitInfo<LineBuildInfo>().SegmentType;
 					if (string.IsNullOrEmpty(segmentType))
-						segmentType = order.TargetString;
+						segmentType = actorInfo.Name;
 
-					foreach (var t in BuildingUtils.GetLineBuildCells(w, targetLocation, actorInfo, buildingInfo))
+					foreach (var t in BuildingUtils.GetLineBuildCells(w, targetLocation, actorInfo, buildingInfo, order.Player))
 					{
-						if (t.First == targetLocation)
+						if (t.Cell == targetLocation)
 							continue;
 
-						w.CreateActor(t.First == targetLocation ? order.TargetString : segmentType, new TypeDictionary
+						var segment = self.World.Map.Rules.Actors[segmentType];
+						var replaceableSegments = segment.TraitInfos<ReplacementInfo>()
+							.SelectMany(r => r.ReplaceableTypes)
+							.ToHashSet();
+
+						if (replaceableSegments.Count > 0)
+							foreach (var a in self.World.ActorMap.GetActorsAt(t.Cell))
+								if (a.TraitsImplementing<Replaceable>().Any(r => !r.IsTraitDisabled && r.Info.Types.Overlaps(replaceableSegments)))
+									self.World.Remove(a);
+
+						w.CreateActor(segmentType, new TypeDictionary
 						{
-							new LocationInit(t.First),
+							new LocationInit(t.Cell),
 							new OwnerInit(order.Player),
 							new FactionInit(faction),
-							new LineBuildDirectionInit(t.First.X == targetLocation.X ? LineBuildDirection.Y : LineBuildDirection.X),
-							new LineBuildParentInit(new[] { t.Second, placed }),
+							new LineBuildDirectionInit(t.Cell.X == targetLocation.X ? LineBuildDirection.Y : LineBuildDirection.X),
+							new LineBuildParentInit(new[] { t.Actor, placed }),
 							new PlaceBuildingInit()
 						});
 					}
 				}
 				else if (os == "PlacePlug")
 				{
-					var host = self.World.WorldActor.Trait<BuildingInfluence>().GetBuildingAt(targetLocation);
-					if (host == null)
-						return;
-
 					var plugInfo = actorInfo.TraitInfoOrDefault<PlugInfo>();
 					if (plugInfo == null)
 						return;
 
-					var location = host.Location;
-					var pluggable = host.TraitsImplementing<Pluggable>()
-						.FirstOrDefault(p => location + p.Info.Offset == targetLocation && p.AcceptsPlug(host, plugInfo.Type));
+					foreach (var a in self.World.ActorMap.GetActorsAt(targetLocation))
+					{
+						var pluggables = a.TraitsImplementing<Pluggable>()
+							.Where(p => p.AcceptsPlug(plugInfo.Type))
+							.ToList();
 
-					if (pluggable == null)
-						return;
+						var pluggable = pluggables.FirstOrDefault(p => a.Location + p.Info.Offset == targetLocation)
+							?? pluggables.FirstOrDefault();
 
-					pluggable.EnablePlug(host, plugInfo.Type);
-					foreach (var s in buildingInfo.BuildSounds)
-						Game.Sound.PlayToPlayer(SoundType.World, order.Player, s, host.CenterPosition);
+						if (pluggable == null)
+							return;
+
+						pluggable.EnablePlug(a, plugInfo.Type);
+						foreach (var s in buildingInfo.BuildSounds)
+							Game.Sound.PlayToPlayer(SoundType.World, order.Player, s, a.CenterPosition);
+					}
 				}
 				else
 				{
@@ -145,19 +190,7 @@ namespace OpenRA.Mods.Common.Traits
 						|| !buildingInfo.IsCloseEnoughToBase(self.World, order.Player, actorInfo, targetLocation))
 						return;
 
-					var replacementInfo = actorInfo.TraitInfoOrDefault<ReplacementInfo>();
-					if (replacementInfo != null)
-					{
-						var buildingInfluence = self.World.WorldActor.Trait<BuildingInfluence>();
-						foreach (var t in buildingInfo.Tiles(targetLocation))
-						{
-							var host = buildingInfluence.GetBuildingAt(t);
-							if (host != null)
-								host.World.Remove(host);
-						}
-					}
-
-					var building = w.CreateActor(order.TargetString, new TypeDictionary
+					var building = w.CreateActor(actorInfo.Name, new TypeDictionary
 					{
 						new LocationInit(targetLocation),
 						new OwnerInit(order.Player),
@@ -175,14 +208,10 @@ namespace OpenRA.Mods.Common.Traits
 
 				queue.EndProduction(item);
 
+				// FindBaseProvider may return null if the build anywhere cheat is active
+				// BuildingInfo.IsCloseEnoughToBase has already verified that this is a valid build location
 				if (buildingInfo.RequiresBaseProvider)
-				{
-					// May be null if the build anywhere cheat is active
-					// BuildingInfo.IsCloseEnoughToBase has already verified that this is a valid build location
-					var provider = buildingInfo.FindBaseProvider(w, self.Owner, targetLocation);
-					if (provider != null)
-						provider.BeginCooldown();
-				}
+					buildingInfo.FindBaseProvider(w, self.Owner, targetLocation)?.BeginCooldown();
 
 				if (GetNumBuildables(self.Owner) > prevItems)
 					triggerNotification = true;
@@ -201,6 +230,8 @@ namespace OpenRA.Mods.Common.Traits
 		void PlayNotification(Actor self)
 		{
 			Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.NewOptionsNotification, self.Owner.Faction.InternalName);
+			TextNotificationsManager.AddTransientLine(info.NewOptionsTextNotification, self.Owner);
+
 			triggerNotification = false;
 			tick = 0;
 		}

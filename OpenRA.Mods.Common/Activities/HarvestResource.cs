@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,9 +9,10 @@
  */
 #endregion
 
+using System.Collections.Generic;
+using System.Linq;
 using OpenRA.Activities;
 using OpenRA.Mods.Common.Traits;
-using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Activities
@@ -22,10 +23,11 @@ namespace OpenRA.Mods.Common.Activities
 		readonly HarvesterInfo harvInfo;
 		readonly IFacing facing;
 		readonly ResourceClaimLayer claimLayer;
-		readonly ResourceLayer resLayer;
+		readonly IResourceLayer resourceLayer;
 		readonly BodyOrientation body;
 		readonly IMove move;
 		readonly CPos targetCell;
+		readonly INotifyHarvesterAction[] notifyHarvesterActions;
 
 		public HarvestResource(Actor self, CPos targetCell)
 		{
@@ -35,8 +37,9 @@ namespace OpenRA.Mods.Common.Activities
 			body = self.Trait<BodyOrientation>();
 			move = self.Trait<IMove>();
 			claimLayer = self.World.WorldActor.Trait<ResourceClaimLayer>();
-			resLayer = self.World.WorldActor.Trait<ResourceLayer>();
+			resourceLayer = self.World.WorldActor.Trait<IResourceLayer>();
 			this.targetCell = targetCell;
+			notifyHarvesterActions = self.TraitsImplementing<INotifyHarvesterAction>().ToArray();
 		}
 
 		protected override void OnFirstRun(Actor self)
@@ -47,31 +50,26 @@ namespace OpenRA.Mods.Common.Activities
 			claimLayer.TryClaimCell(self, targetCell);
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
-			if (ChildActivity != null)
-			{
-				ChildActivity = ActivityUtils.RunActivity(self, ChildActivity);
-				if (ChildActivity != null)
-					return this;
-			}
+			if (harv.IsTraitDisabled)
+				Cancel(self, true);
 
 			if (IsCanceling || harv.IsFull)
-				return NextActivity;
+				return true;
 
 			// Move towards the target cell
 			if (self.Location != targetCell)
 			{
-				foreach (var n in self.TraitsImplementing<INotifyHarvesterAction>())
-					n.MovingToResources(self, targetCell, new FindAndDeliverResources(self));
+				foreach (var n in notifyHarvesterActions)
+					n.MovingToResources(self, targetCell);
 
-				self.SetTargetLine(Target.FromCell(self.World, targetCell), Color.Red, false);
-				QueueChild(self, move.MoveTo(targetCell, 2), true);
-				return this;
+				QueueChild(move.MoveTo(targetCell, 0));
+				return false;
 			}
 
-			if (!harv.CanHarvestCell(self, self.Location))
-				return NextActivity;
+			if (!harv.CanHarvestCell(self.Location))
+				return true;
 
 			// Turn to one of the harvestable facings
 			if (harvInfo.HarvestFacings != 0)
@@ -80,27 +78,40 @@ namespace OpenRA.Mods.Common.Activities
 				var desired = body.QuantizeFacing(current, harvInfo.HarvestFacings);
 				if (desired != current)
 				{
-					QueueChild(self, new Turn(self, desired), true);
-					return this;
+					QueueChild(new Turn(self, desired));
+					return false;
 				}
 			}
 
-			var resource = resLayer.Harvest(self.Location);
-			if (resource == null)
-				return NextActivity;
+			var resource = resourceLayer.GetResource(self.Location);
+			if (resource.Type == null || resourceLayer.RemoveResource(resource.Type, self.Location) != 1)
+				return true;
 
-			harv.AcceptResource(self, resource);
+			harv.AcceptResource(self, resource.Type);
 
-			foreach (var t in self.TraitsImplementing<INotifyHarvesterAction>())
-				t.Harvested(self, resource);
+			foreach (var t in notifyHarvesterActions)
+				t.Harvested(self, resource.Type);
 
-			QueueChild(self, new Wait(harvInfo.BaleLoadDelay), true);
-			return this;
+			QueueChild(new Wait(harvInfo.BaleLoadDelay));
+			return false;
 		}
 
 		protected override void OnLastRun(Actor self)
 		{
 			claimLayer.RemoveClaim(self);
+		}
+
+		public override void Cancel(Actor self, bool keepQueue = false)
+		{
+			foreach (var n in notifyHarvesterActions)
+				n.MovementCancelled(self);
+
+			base.Cancel(self, keepQueue);
+		}
+
+		public override IEnumerable<TargetLineNode> TargetLineNodes(Actor self)
+		{
+			yield return new TargetLineNode(Target.FromCell(self.World, targetCell), harvInfo.HarvestLineColor);
 		}
 	}
 }

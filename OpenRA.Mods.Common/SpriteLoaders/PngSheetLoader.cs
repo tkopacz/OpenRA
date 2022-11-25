@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using OpenRA.FileFormats;
@@ -34,14 +35,15 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 	{
 		class PngSheetFrame : ISpriteFrame
 		{
+			public SpriteFrameType Type { get; set; }
 			public Size Size { get; set; }
 			public Size FrameSize { get; set; }
 			public float2 Offset { get; set; }
 			public byte[] Data { get; set; }
-			public bool DisableExportPadding { get { return false; } }
+			public bool DisableExportPadding => false;
 		}
 
-		public bool TryParseSprite(Stream s, out ISpriteFrame[] frames, out TypeDictionary metadata)
+		public bool TryParseSprite(Stream s, string filename, out ISpriteFrame[] frames, out TypeDictionary metadata)
 		{
 			metadata = null;
 			frames = null;
@@ -49,10 +51,6 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 				return false;
 
 			var png = new Png(s);
-
-			// Only supports paletted images
-			if (png.Palette == null)
-				return false;
 
 			List<Rectangle> frameRegions;
 			List<float2> frameOffsets;
@@ -64,7 +62,7 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 				RegionsFromSlices(png, out frameRegions, out frameOffsets);
 
 			frames = new ISpriteFrame[frameRegions.Count];
-
+			var stride = png.PixelStride;
 			for (var i = 0; i < frames.Length; i++)
 			{
 				var frameStart = frameRegions[i].X + frameRegions[i].Y * png.Width;
@@ -74,18 +72,21 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 					Size = frameSize,
 					FrameSize = frameSize,
 					Offset = frameOffsets[i],
-					Data = new byte[frameRegions[i].Width * frameRegions[i].Height]
+					Data = new byte[frameRegions[i].Width * frameRegions[i].Height * stride],
+					Type = png.Type
 				};
 
 				for (var y = 0; y < frames[i].Size.Height; y++)
-					Array.Copy(png.Data, frameStart + y * png.Width, frames[i].Data, y * frames[i].Size.Width, frames[i].Size.Width);
+					Array.Copy(png.Data, (frameStart + y * png.Width) * stride, frames[i].Data, y * frames[i].Size.Width * stride, frames[i].Size.Width * stride);
 			}
 
 			metadata = new TypeDictionary
 			{
 				new PngSheetMetadata(png.EmbeddedData),
-				new EmbeddedSpritePalette(png.Palette.Select(x => (uint)x.ToArgb()).ToArray())
 			};
+
+			if (png.Palette != null)
+				metadata.Add(new EmbeddedSpritePalette(png.Palette.Select(x => (uint)x.ToArgb()).ToArray()));
 
 			return true;
 		}
@@ -94,13 +95,17 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 		{
 			regions = new List<Rectangle>();
 			offsets = new List<float2>();
+			var pngRectangle = new Rectangle(0, 0, png.Width, png.Height);
 
-			string frame;
-			for (var i = 0; png.EmbeddedData.TryGetValue("Frame[" + i + "]", out frame); i++)
+			for (var i = 0; png.EmbeddedData.TryGetValue("Frame[" + i + "]", out var frame); i++)
 			{
 				// Format: x,y,width,height;offsetX,offsetY
 				var coords = frame.Split(';');
-				regions.Add(FieldLoader.GetValue<Rectangle>("Region", coords[0]));
+				var region = FieldLoader.GetValue<Rectangle>("Region", coords[0]);
+				if (!pngRectangle.Contains(region))
+					throw new InvalidDataException($"Invalid frame regions {region} defined.");
+
+				regions.Add(region);
 				offsets.Add(FieldLoader.GetValue<float2>("Offset", coords[1]));
 			}
 		}
@@ -120,11 +125,11 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 				if (png.EmbeddedData.ContainsKey("FrameAmount"))
 					frameAmount = FieldLoader.GetValue<int>("FrameAmount", png.EmbeddedData["FrameAmount"]);
 				else
-					frameAmount = png.Width / frameSize.Width * png.Height / frameSize.Height;
+					frameAmount = (png.Width / frameSize.Width) * (png.Height / frameSize.Height);
 			}
 			else if (png.EmbeddedData.ContainsKey("FrameAmount"))
 			{
-				// Otherwise, calculate the number of frames by splitting the image horizontaly by FrameAmount.
+				// Otherwise, calculate the number of frames by splitting the image horizontally by FrameAmount.
 				frameAmount = FieldLoader.GetValue<int>("FrameAmount", png.EmbeddedData["FrameAmount"]);
 				frameSize = new Size(png.Width / frameAmount, png.Height);
 			}
@@ -138,6 +143,10 @@ namespace OpenRA.Mods.Common.SpriteLoaders
 				offset = float2.Zero;
 
 			var framesPerRow = png.Width / frameSize.Width;
+
+			var rows = (frameAmount + framesPerRow - 1) / framesPerRow;
+			if (png.Width < frameSize.Width * frameAmount / rows || png.Height < frameSize.Height * rows)
+				throw new InvalidDataException($"Invalid frame size {frameSize} and frame amount {frameAmount} defined.");
 
 			regions = new List<Rectangle>();
 			offsets = new List<float2>();

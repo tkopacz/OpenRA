@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -23,6 +23,8 @@ namespace OpenRA.Platforms.Default
 {
 	sealed class OpenAlSoundEngine : ISoundEngine
 	{
+		public bool Dummy => false;
+
 		public SoundDevice[] AvailableDevices()
 		{
 			var defaultDevices = new[]
@@ -64,7 +66,7 @@ namespace OpenRA.Platforms.Default
 			if (devicesPtr == IntPtr.Zero || AL10.alGetError() != AL10.AL_NO_ERROR)
 			{
 				Log.Write("sound", "Failed to query OpenAL device list using {0}", label);
-				return new string[0];
+				return Array.Empty<string>();
 			}
 
 			var devices = new List<string>();
@@ -101,7 +103,7 @@ namespace OpenRA.Platforms.Default
 			if (ALC11.alcIsExtensionPresent(IntPtr.Zero, "ALC_ENUMERATION_EXT"))
 				return QueryDevices("ALC_ENUMERATION_EXT", ALC10.ALC_DEVICE_SPECIFIER);
 
-			return new string[] { };
+			return Array.Empty<string>();
 		}
 
 		internal static int MakeALFormat(int channels, int bits)
@@ -135,8 +137,7 @@ namespace OpenRA.Platforms.Default
 
 			for (var i = 0; i < PoolSize; i++)
 			{
-				var source = 0U;
-				AL10.alGenSources(1, out source);
+				AL10.alGenSources(1, out var source);
 				if (AL10.alGetError() != AL10.AL_NO_ERROR)
 				{
 					Log.Write("sound", "Failed generating OpenAL source {0}", i);
@@ -169,6 +170,15 @@ namespace OpenRA.Platforms.Default
 					freeSources.Add(freeSource);
 					AL10.alSourceRewind(freeSource);
 					AL10.alSourcei(freeSource, AL10.AL_BUFFER, 0);
+
+					// Make sure we can accurately determine the end of the original sound,
+					// even if the source is immediately reused.
+					sound.UnbindSource();
+
+					var slot = kv.Value;
+					slot.SoundSource = null;
+					slot.Sound = null;
+					slot.IsActive = false;
 				}
 			}
 
@@ -176,14 +186,6 @@ namespace OpenRA.Platforms.Default
 			{
 				source = 0;
 				return false;
-			}
-
-			foreach (var freeSource in freeSources)
-			{
-				var slot = sourcePool[freeSource];
-				slot.SoundSource = null;
-				slot.Sound = null;
-				slot.IsActive = false;
 			}
 
 			source = freeSources[0];
@@ -240,8 +242,7 @@ namespace OpenRA.Platforms.Default
 				atten = 0.66f * ((PoolSize - activeCount * 0.5f) / PoolSize);
 			}
 
-			uint source;
-			if (!TryGetSourceFromPool(out source))
+			if (!TryGetSourceFromPool(out var source))
 				return null;
 
 			var slot = sourcePool[source];
@@ -257,8 +258,7 @@ namespace OpenRA.Platforms.Default
 		{
 			var currFrame = Game.LocalTick;
 
-			uint source;
-			if (!TryGetSourceFromPool(out source))
+			if (!TryGetSourceFromPool(out var source))
 				return null;
 
 			var slot = sourcePool[source];
@@ -272,13 +272,13 @@ namespace OpenRA.Platforms.Default
 
 		public float Volume
 		{
-			get { return volume; }
-			set { AL10.alListenerf(AL10.AL_GAIN, volume = value); }
+			get => volume;
+			set => AL10.alListenerf(AL10.AL_GAIN, volume = value);
 		}
 
 		public void PauseSound(ISound sound, bool paused)
 		{
-			if (sound == null)
+			if (sound == null || sound.Complete)
 				return;
 
 			var source = ((OpenAlSound)sound).Source;
@@ -293,8 +293,7 @@ namespace OpenRA.Platforms.Default
 
 		void PauseSound(uint source, bool paused)
 		{
-			int state;
-			AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE, out state);
+			AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE, out var state);
 			if (paused)
 			{
 				if (state == AL10.AL_PLAYING)
@@ -315,8 +314,7 @@ namespace OpenRA.Platforms.Default
 		{
 			var sounds = sourcePool.Keys.Where(key =>
 			{
-				int state;
-				AL10.alGetSourcei(key, AL10.AL_SOURCE_STATE, out state);
+				AL10.alGetSourcei(key, AL10.AL_SOURCE_STATE, out var state);
 				return (state == AL10.AL_PLAYING || state == AL10.AL_PAUSED) &&
 					   (music == null || key != ((OpenAlSound)music).Source) &&
 					   (video == null || key != ((OpenAlSound)video).Source);
@@ -328,17 +326,13 @@ namespace OpenRA.Platforms.Default
 
 		public void StopSound(ISound sound)
 		{
-			if (sound == null)
-				return;
-
-			((OpenAlSound)sound).Stop();
+			((OpenAlSound)sound)?.Stop();
 		}
 
 		public void StopAllSounds()
 		{
 			foreach (var slot in sourcePool.Values)
-				if (slot.Sound != null)
-					slot.Sound.Stop();
+				slot.Sound?.Stop();
 		}
 
 		public void SetListenerPosition(WPos position)
@@ -349,6 +343,11 @@ namespace OpenRA.Platforms.Default
 			var orientation = new[] { 0f, 0f, 1f, 0f, -1f, 0f };
 			AL10.alListenerfv(AL10.AL_ORIENTATION, orientation);
 			AL10.alListenerf(EFX.AL_METERS_PER_UNIT, .01f);
+		}
+
+		public void SetSoundLooping(bool looping, ISound sound)
+		{
+			((OpenAlSound)sound)?.SetLooping(looping);
 		}
 
 		~OpenAlSoundEngine()
@@ -364,7 +363,8 @@ namespace OpenRA.Platforms.Default
 
 		void Dispose(bool disposing)
 		{
-			StopAllSounds();
+			if (disposing)
+				StopAllSounds();
 
 			if (context != IntPtr.Zero)
 			{
@@ -386,8 +386,8 @@ namespace OpenRA.Platforms.Default
 		uint buffer;
 		bool disposed;
 
-		public uint Buffer { get { return buffer; } }
-		public int SampleRate { get; private set; }
+		public uint Buffer => buffer;
+		public int SampleRate { get; }
 
 		public OpenAlSoundSource(byte[] data, int byteCount, int channels, int sampleBits, int sampleRate)
 		{
@@ -419,8 +419,10 @@ namespace OpenRA.Platforms.Default
 
 	class OpenAlSound : ISound
 	{
-		public readonly uint Source;
+		internal uint Source { get; private set; }
 		protected readonly float SampleRate;
+
+		bool done;
 
 		public OpenAlSound(uint source, bool looping, bool relative, WPos pos, float volume, int sampleRate, uint buffer)
 			: this(source, looping, relative, pos, volume, sampleRate)
@@ -445,18 +447,40 @@ namespace OpenRA.Platforms.Default
 			AL10.alSourcef(source, AL10.AL_MAX_DISTANCE, 136533);
 		}
 
+		internal void UnbindSource()
+		{
+			done = true;
+			Source = uint.MaxValue;
+		}
+
 		public float Volume
 		{
-			get { float volume; AL10.alGetSourcef(Source, AL10.AL_GAIN, out volume); return volume; }
-			set { AL10.alSourcef(Source, AL10.AL_GAIN, value); }
+			get
+			{
+				if (done)
+					return float.NaN;
+
+				AL10.alGetSourcef(Source, AL10.AL_GAIN, out var volume);
+				return volume;
+			}
+
+			set
+			{
+				if (done)
+					return;
+
+				AL10.alSourcef(Source, AL10.AL_GAIN, value);
+			}
 		}
 
 		public virtual float SeekPosition
 		{
 			get
 			{
-				int sampleOffset;
-				AL10.alGetSourcei(Source, AL11.AL_SAMPLE_OFFSET, out sampleOffset);
+				if (done)
+					return float.NaN;
+
+				AL10.alGetSourcei(Source, AL11.AL_SAMPLE_OFFSET, out var sampleOffset);
 				return sampleOffset / SampleRate;
 			}
 		}
@@ -465,29 +489,47 @@ namespace OpenRA.Platforms.Default
 		{
 			get
 			{
-				int state;
-				AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out state);
+				if (done)
+					return true;
+
+				AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out var state);
 				return state == AL10.AL_STOPPED;
 			}
 		}
 
 		public void SetPosition(WPos pos)
 		{
+			if (done)
+				return;
+
 			AL10.alSource3f(Source, AL10.AL_POSITION, pos.X, pos.Y, pos.Z);
 		}
 
 		protected void StopSource()
 		{
-			int state;
-			AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out state);
+			if (done)
+				return;
+
+			AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out var state);
 			if (state == AL10.AL_PLAYING || state == AL10.AL_PAUSED)
 				AL10.alSourceStop(Source);
 		}
 
 		public virtual void Stop()
 		{
+			if (done)
+				return;
+
 			StopSource();
 			AL10.alSourcei(Source, AL10.AL_BUFFER, 0);
+		}
+
+		public void SetLooping(bool looping)
+		{
+			if (done)
+				return;
+
+			AL10.alSourcei(Source, AL10.AL_LOOPING, looping ? AL10.AL_TRUE : AL10.AL_FALSE);
 		}
 	}
 
@@ -552,8 +594,7 @@ namespace OpenRA.Platforms.Default
 							// TODO: A race condition can happen between the state check and playing/rewinding if a
 							// user pauses/resumes at the right moment. The window of opportunity is small and the
 							// consequences are minor, so for now we'll ignore it.
-							int state;
-							AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out state);
+							AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out var state);
 							if (state != AL10.AL_STOPPED)
 								AL10.alSourcePlay(source);
 							else
@@ -573,8 +614,7 @@ namespace OpenRA.Platforms.Default
 						// has stopped.
 						var currentSeek = SeekPosition;
 
-						int state;
-						AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out state);
+						AL10.alGetSourcei(Source, AL10.AL_SOURCE_STATE, out var state);
 						if (state == AL10.AL_STOPPED)
 							break;
 
@@ -613,9 +653,6 @@ namespace OpenRA.Platforms.Default
 			}
 		}
 
-		public override bool Complete
-		{
-			get { return playTask.IsCompleted; }
-		}
+		public override bool Complete => playTask.IsCompleted;
 	}
 }

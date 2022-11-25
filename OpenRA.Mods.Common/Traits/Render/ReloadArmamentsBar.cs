@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -17,14 +17,14 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Traits.Render
 {
 	[Desc("Visualizes the minimum remaining time for reloading the armaments.")]
-	class ReloadArmamentsBarInfo : ITraitInfo
+	class ReloadArmamentsBarInfo : TraitInfo
 	{
 		[Desc("Armament names")]
 		public readonly string[] Armaments = { "primary", "secondary" };
 
 		public readonly Color Color = Color.Red;
 
-		public object Create(ActorInitializer init) { return new ReloadArmamentsBar(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new ReloadArmamentsBar(init.Self, this); }
 	}
 
 	class ReloadArmamentsBar : ISelectionBar, INotifyCreated
@@ -42,7 +42,7 @@ namespace OpenRA.Mods.Common.Traits.Render
 		void INotifyCreated.Created(Actor self)
 		{
 			// Name check can be cached but enabled check can't.
-			armaments = self.TraitsImplementing<Armament>().Where(a => info.Armaments.Contains(a.Info.Name)).ToArray().Where(Exts.IsTraitEnabled);
+			armaments = self.TraitsImplementing<Armament>().Where(a => info.Armaments.Contains(a.Info.Name)).ToArray().Where(t => !t.IsTraitDisabled);
 		}
 
 		float ISelectionBar.GetValue()
@@ -54,6 +54,6 @@ namespace OpenRA.Mods.Common.Traits.Render
 		}
 
 		Color ISelectionBar.GetColor() { return info.Color; }
-		bool ISelectionBar.DisplayWhenEmpty { get { return false; } }
+		bool ISelectionBar.DisplayWhenEmpty => false;
 	}
 }

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -43,9 +43,10 @@ namespace OpenRA.Mods.Common.Traits
 		}
 	}
 
-	public class ReloadAmmoPool : PausableConditionalTrait<ReloadAmmoPoolInfo>, ITick, INotifyCreated, INotifyAttack, ISync
+	public class ReloadAmmoPool : PausableConditionalTrait<ReloadAmmoPoolInfo>, ITick, INotifyAttack, ISync
 	{
 		AmmoPool ammoPool;
+		IReloadAmmoModifier[] modifiers;
 
 		[Sync]
 		int remainingTicks;
@@ -53,19 +54,25 @@ namespace OpenRA.Mods.Common.Traits
 		public ReloadAmmoPool(ReloadAmmoPoolInfo info)
 			: base(info) { }
 
-		void INotifyCreated.Created(Actor self)
+		protected override void Created(Actor self)
 		{
 			ammoPool = self.TraitsImplementing<AmmoPool>().Single(ap => ap.Info.Name == Info.AmmoPool);
-			remainingTicks = Info.Delay;
+			modifiers = self.TraitsImplementing<IReloadAmmoModifier>().ToArray();
+			base.Created(self);
+
+			self.World.AddFrameEndTask(w =>
+			{
+				remainingTicks = Util.ApplyPercentageModifiers(Info.Delay, modifiers.Select(m => m.GetReloadAmmoModifier()));
+			});
 		}
 
-		void INotifyAttack.Attacking(Actor self, Target target, Armament a, Barrel barrel)
+		void INotifyAttack.Attacking(Actor self, in Target target, Armament a, Barrel barrel)
 		{
 			if (Info.ResetOnFire)
-				remainingTicks = Info.Delay;
+				remainingTicks = Util.ApplyPercentageModifiers(Info.Delay, modifiers.Select(m => m.GetReloadAmmoModifier()));
 		}
 
-		void INotifyAttack.PreparingAttack(Actor self, Target target, Armament a, Barrel barrel) { }
+		void INotifyAttack.PreparingAttack(Actor self, in Target target, Armament a, Barrel barrel) { }
 
 		void ITick.Tick(Actor self)
 		{
@@ -77,9 +84,9 @@ namespace OpenRA.Mods.Common.Traits
 
 		protected virtual void Reload(Actor self, int reloadDelay, int reloadCount, string sound)
 		{
-			if (!ammoPool.FullAmmo() && --remainingTicks == 0)
+			if (!ammoPool.HasFullAmmo && --remainingTicks == 0)
 			{
-				remainingTicks = reloadDelay;
+				remainingTicks = Util.ApplyPercentageModifiers(reloadDelay, modifiers.Select(m => m.GetReloadAmmoModifier()));
 				if (!string.IsNullOrEmpty(sound))
 					Game.Sound.PlayToPlayer(SoundType.World, self.Owner, sound, self.CenterPosition);
 

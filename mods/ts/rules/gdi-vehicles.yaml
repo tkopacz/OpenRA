@@ -1,6 +1,7 @@
 APC:
 	Inherits: ^Tank
 	Inherits@VOXELS: ^VoxelActor
+	Inherits@CARGOPIPS: ^CargoPips
 	Valued:
 		Cost: 800
 	Tooltip:
@@ -13,9 +14,9 @@ APC:
 		Prerequisites: ~gaweap, gapile, ~techlevel.medium
 		Description: Armored infantry transport.\nCan move on water.\n  Unarmed
 	Mobile:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 113
-		PauseOnCondition: empdisable || loading || being-captured
+		PauseOnCondition: empdisable || loading || being-captured || carried
 		Locomotor: amphibious
 	Health:
 		HP: 20000
@@ -28,7 +29,6 @@ APC:
 	Cargo:
 		Types: Infantry
 		MaxWeight: 5
-		PipCount: 5
 		UnloadVoice: Unload
 		LoadingCondition: loading
 		EjectOnDeath: true
@@ -67,8 +67,9 @@ HVR:
 	Mobile:
 		Speed: 99
 		Locomotor: hover
+		TerrainOrientationAdjustmentMargin: -1
 	Selectable:
-		Bounds: 40,24,0,-10
+		Bounds: 1206, 1448, 0, -603
 	Health:
 		HP: 23000
 	Armor:
@@ -81,7 +82,7 @@ HVR:
 		Weapon: HoverMissile
 		LocalOffset: 0,242,543, 0,-242,543
 	Turreted:
-		TurnSpeed: 7
+		TurnSpeed: 28
 		Offset: -128,0,85
 	AttackTurreted:
 		Voice: Attack
@@ -91,8 +92,10 @@ HVR:
 		RequiresCondition: !empdisable
 		BobDistance: -64
 		InitialHeight: 384
+	Carryable:
+		CarriedCondition: carried
 	LeavesTrails:
-		RequiresCondition: !inside-tunnel
+		RequiresCondition: !inside-tunnel && !carried
 		Image: wake
 		Palette: effect
 		TerrainTypes: Water
@@ -118,8 +121,10 @@ SMECH:
 		Prerequisites: ~gaweap, ~techlevel.low
 		Description: Anti-personnel walker.\n  Strong vs Infantry, Light armor\n  Weak vs Vehicles, Aircraft
 	Mobile:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 99
+		AlwaysTurnInPlace: true
+		TerrainOrientationAdjustmentMargin: -1
 	Health:
 		HP: 17500
 	Armor:
@@ -131,6 +136,7 @@ SMECH:
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	Armament:
 		Weapon: AssaultCannon
 	Voiced:
@@ -139,13 +145,18 @@ SMECH:
 		Sequence: stand
 	WithFacingSpriteBody:
 		Sequence: stand
+		Palette: player-nomuzzle
+		IsPlayerPalette: True
 	WithAttackAnimation:
 		Sequence: shoot
+	WithAttackOverlay@muzzle:
+		Sequence: shoot-muzzle
+		Palette: muzzle
 	WithMoveAnimation:
 		MoveSequence: walk
 		ValidMovementTypes: Horizontal, Turn
 	Selectable:
-		Bounds: 20, 32, 0, -8
+		Bounds: 603, 1930, 0, -482
 	-DamagedByTerrain@VEINS:
 	-LeavesTrails@VEINS:
 
@@ -165,8 +176,10 @@ MMCH:
 		Prerequisites: ~gaweap, ~techlevel.medium
 		Description: General purpose mechanized walker.\n  Strong vs Vehicles\n  Weak vs Infantry, Aircraft
 	Mobile:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 56
+		AlwaysTurnInPlace: true
+		TerrainOrientationAdjustmentMargin: -1
 	Health:
 		HP: 40000
 	Armor:
@@ -184,7 +197,7 @@ MMCH:
 		MoveSequence: walk
 		ValidMovementTypes: Horizontal, Turn
 	Turreted:
-		TurnSpeed: 5
+		TurnSpeed: 20
 	AttackTurreted:
 		Voice: Attack
 		PauseOnCondition: empdisable
@@ -193,7 +206,6 @@ MMCH:
 	Armament:
 		Weapon: 120mm
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 		Recoil: 128
 		RecoilRecovery: 32
 		LocalOffset: 1024,272,1216
@@ -206,7 +218,7 @@ MMCH:
 	WithVoxelBarrel:
 		LocalOffset: 0,51,256
 	Selectable:
-		Bounds: 30, 42, 0, -8
+		Bounds: 905, 2534, 0, -482
 	Carryable:
 		LocalOffset: 0,0,577
 
@@ -228,11 +240,11 @@ HMEC:
 		BuildLimit: 1
 		Description: Slow heavy walker.\nArmed with dual railguns and rocket launchers.\n  Strong vs Infantry, Vehicles, Aircraft and Buildings\n  Weak vs Nothing\nMaximum 1 can be built.
 	Mobile:
-		TurnSpeed: 3
+		TurnSpeed: 12
 		Speed: 42
 	Health:
 		HP: 80000
-	SelfHealing:
+	ChangesHealth:
 		Step: 500
 	Armor:
 		Type: Heavy
@@ -243,6 +255,7 @@ HMEC:
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	Armament@MISSILES:
 		Weapon: MammothTusk
 		LocalOffset: -243,-368,1208, -243,368,1208
@@ -253,7 +266,7 @@ HMEC:
 	WithVoxelWalkerBody:
 		TickRate: 1
 	Selectable:
-		Bounds: 40, 40, 0, -8
+		Bounds: 1206, 2413, 0, -482
 	Carryable:
 		LocalOffset: 0,0,509
 
@@ -276,7 +289,7 @@ SONIC:
 	Targetable:
 		TargetTypes: Ground, Vehicle, Disruptor
 	Mobile:
-		TurnSpeed: 4
+		TurnSpeed: 16
 		Speed: 56
 	Health:
 		HP: 50000
@@ -294,7 +307,7 @@ SONIC:
 		PauseOnCondition: empdisable
 		OpportunityFire: False
 	Turreted:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Offset: -170,0,0
 	WithVoxelTurret:
 	Explodes:
@@ -329,9 +342,11 @@ JUGG:
 		Type: Light
 	Mobile:
 		Speed: 71
-		TurnSpeed: 5
-		PauseOnCondition: empdisable || being-captured
+		TurnSpeed: 20
+		AlwaysTurnInPlace: true
+		ImmovableCondition: !undeployed
 		RequireForceMoveCondition: !undeployed
+		TerrainOrientationAdjustmentMargin: -1
 	RevealsShroud:
 		RequiresCondition: !inside-tunnel
 		Range: 9c0
@@ -344,7 +359,7 @@ JUGG:
 		BodyNames: body, deployedbody
 	WithFacingSpriteBody:
 		Sequence: stand
-		RequiresCondition: undeployed
+		RequiresCondition: !deployed
 	WithMoveAnimation:
 		MoveSequence: walk
 		ValidMovementTypes: Horizontal, Turn
@@ -353,7 +368,8 @@ JUGG:
 		DeployedCondition: deployed
 		UndeployedCondition: undeployed
 		UndeployOnMove: true
-		Facing: 96
+		UndeployOnPickup: true
+		Facing: 384
 		AllowedTerrainTypes: Clear, Road, DirtRoad, Rough
 		DeploySounds: place2.aud
 		UndeploySounds: clicky1.aud
@@ -369,12 +385,12 @@ JUGG:
 	QuantizeFacingsFromSequence:
 		Sequence: turret
 	WithSpriteBody@deployed:
-		RequiresCondition: !undeployed && real-actor
+		RequiresCondition: deployed && real-actor
 		Name: deployedbody
 	Turreted:
 		Turret: deployed
-		TurnSpeed: 5
-		InitialFacing: 96
+		TurnSpeed: 20
+		InitialFacing: 384
 		Offset: -153,-17,633
 		RealignDelay: -1
 	WithVoxelBarrel:
@@ -402,12 +418,8 @@ JUGG:
 		LocalOffset: 820,203,1386, 820,0,1386, 820,-203,1386
 		RequiresCondition: deployed
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 	WithMuzzleOverlay:
-	Carryable:
-		RequiresCondition: undeployed
 	RevealOnFire:
 		ArmamentNames: deployed
-	SelectionDecorations:
 	Selectable:
-		DecorationBounds: 48,40,0,-8
+		DecorationBounds: 1448, 2413, 0, -482

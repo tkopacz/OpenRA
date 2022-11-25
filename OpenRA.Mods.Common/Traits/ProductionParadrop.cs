@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using System.Collections.Generic;
 using OpenRA.Activities;
 using OpenRA.Mods.Common.Activities;
 using OpenRA.Primitives;
@@ -28,8 +29,11 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly string ChuteSound = null;
 
 		[NotificationReference("Speech")]
-		[Desc("Notification to play when dropping the unit.")]
+		[Desc("Speech notification to play when dropping the unit.")]
 		public readonly string ReadyAudio = null;
+
+		[Desc("Text notification to display when dropping the unit.")]
+		public readonly string ReadyTextNotification = null;
 
 		public override object Create(ActorInitializer init) { return new ProductionParadrop(init, this); }
 	}
@@ -44,7 +48,7 @@ namespace OpenRA.Mods.Common.Traits
 			rp = Exts.Lazy(() => init.Self.IsDead ? null : init.Self.TraitOrDefault<RallyPoint>());
 		}
 
-		public override bool Produce(Actor self, ActorInfo producee, string productionType, TypeDictionary inits)
+		public override bool Produce(Actor self, ActorInfo producee, string productionType, TypeDictionary inits, int refundableValue)
 		{
 			if (IsTraitDisabled || IsTraitPaused)
 				return false;
@@ -68,28 +72,35 @@ namespace OpenRA.Mods.Common.Traits
 			owner.World.AddFrameEndTask(w =>
 			{
 				if (!self.IsInWorld || self.IsDead)
+				{
+					owner.PlayerActor.Trait<PlayerResources>().GiveCash(refundableValue);
 					return;
+				}
 
 				var altitude = self.World.Map.Rules.Actors[actorType].TraitInfo<AircraftInfo>().CruiseAltitude;
 				var actor = w.CreateActor(actorType, new TypeDictionary
 				{
 					new CenterPositionInit(w.Map.CenterOfCell(startPos) + new WVec(WDist.Zero, WDist.Zero, altitude)),
 					new OwnerInit(owner),
-					new FacingInit(64)
+					new FacingInit(new WAngle(256)),
 				});
 
 				actor.QueueActivity(new Fly(actor, Target.FromCell(w, dropPos)));
 				actor.QueueActivity(new CallFunc(() =>
 				{
 					if (!self.IsInWorld || self.IsDead)
+					{
+						owner.PlayerActor.Trait<PlayerResources>().GiveCash(refundableValue);
 						return;
+					}
 
 					foreach (var cargo in self.TraitsImplementing<INotifyDelivery>())
 						cargo.Delivered(self);
 
-					self.World.AddFrameEndTask(ww => DoProduction(self, producee, exit.Info, productionType, inits));
+					self.World.AddFrameEndTask(ww => DoProduction(self, producee, exit?.Info, productionType, inits));
 					Game.Sound.Play(SoundType.World, info.ChuteSound, self.CenterPosition);
 					Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.ReadyAudio, self.Owner.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(info.ReadyTextNotification, self.Owner);
 				}));
 
 				actor.QueueActivity(new Fly(actor, Target.FromCell(w, endPos)));
@@ -102,8 +113,7 @@ namespace OpenRA.Mods.Common.Traits
 		public override void DoProduction(Actor self, ActorInfo producee, ExitInfo exitinfo, string productionType, TypeDictionary inits)
 		{
 			var exit = CPos.Zero;
-			var exitLocation = CPos.Zero;
-			var target = Target.Invalid;
+			var exitLocations = new List<CPos>();
 
 			var info = (ProductionParadropInfo)Info;
 			var actorType = info.ActorType;
@@ -117,39 +127,32 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (self.OccupiesSpace != null)
 			{
-				exit = self.Location + exitinfo.ExitCell;
+				exit = self.Location;
+				if (exitinfo != null)
+					exit += exitinfo.ExitCell;
+
 				var spawn = self.World.Map.CenterOfCell(exit) + new WVec(WDist.Zero, WDist.Zero, altitude);
 				var to = self.World.Map.CenterOfCell(exit);
 
-				var initialFacing = exitinfo.Facing < 0 ? (to - spawn).Yaw.Facing : exitinfo.Facing;
+				var initialFacing = (exitinfo != null && exitinfo.Facing.HasValue) ? exitinfo.Facing.Value : (to - spawn).Yaw;
 
-				exitLocation = rp.Value != null ? rp.Value.Location : exit;
-				target = Target.FromCell(self.World, exitLocation);
+				exitLocations = rp.Value != null && rp.Value.Path.Count > 0 ? rp.Value.Path : new List<CPos> { exit };
 
 				td.Add(new LocationInit(exit));
 				td.Add(new CenterPositionInit(spawn));
 				td.Add(new FacingInit(initialFacing));
+				td.Add(new CreationActivityDelayInit(exitinfo == null ? 0 : exitinfo.ExitDelay));
 			}
 
 			self.World.AddFrameEndTask(w =>
 			{
 				var newUnit = self.World.CreateActor(producee.Name, td);
+				newUnit.Trait<Parachutable>().IgnoreActor = self;
 
-				newUnit.QueueActivity(new Parachute(newUnit, self));
 				var move = newUnit.TraitOrDefault<IMove>();
 				if (move != null)
-				{
-					if (exitinfo.MoveIntoWorld)
-					{
-						if (exitinfo.ExitDelay > 0)
-							newUnit.QueueActivity(new Wait(exitinfo.ExitDelay, false));
-
-						newUnit.QueueActivity(move.MoveIntoWorld(newUnit, exit));
-						newUnit.QueueActivity(new AttackMoveActivity(newUnit, () => move.MoveTo(exitLocation, 1)));
-					}
-				}
-
-				newUnit.SetTargetLine(target, rp.Value != null ? Color.Red : Color.Green, false);
+					foreach (var cell in exitLocations)
+						newUnit.QueueActivity(new AttackMoveActivity(newUnit, () => move.MoveTo(cell, 1, evaluateNearestMovableCell: true, targetLineColor: Color.OrangeRed)));
 
 				if (!self.IsDead)
 					foreach (var t in self.TraitsImplementing<INotifyProduction>())

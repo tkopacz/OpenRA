@@ -1,8 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RuleSet Name="OpenRA Code Style" ToolsVersion="14.0">
+
   <IncludeAll Action="Warning" />
+
+  <!-- Rules related to generating XML documentation that we need to silence. -->
+  <!-- These are here because of GenerateDocumentationFile, which is a workaround for forcing rule IDE0005 to work outside of an IDE. -->
+  <Rules AnalyzerId="Microsoft.CodeAnalysis.CSharp" RuleNamespace="Microsoft.CodeAnalysis.CSharp">
+    <Rule Id="CS1570" Action="None" /><!-- Invalid XML in XML comment. -->
+    <Rule Id="CS1573" Action="None" /><!-- Parameter has no matching param tag in the XML comment. -->
+    <Rule Id="CS1591" Action="None" /><!-- Missing XML comment for publicly visible type or member. -->
+  </Rules>
+
+  <Rules AnalyzerId="Microsoft.CodeAnalysis.CSharp.CodeStyle" RuleNamespace="Microsoft.CodeAnalysis.CSharp.CodeStyle">
+    <Rule Id="IDE0005" Action="Warning" /><!-- Using directive is unnecessary. -->
+  </Rules>
+
   <Rules AnalyzerId="StyleCop.Analyzers" RuleNamespace="StyleCop.Analyzers">
     <Rule Id="SX1101" Action="Warning" /><!-- DoNotPrefixLocalMembersWithThis -->
+
+    <!-- Rules that are covered by IDE1006 -->
+    <Rule Id="SA1300" Action="None" /><!-- ElementMustBeginWithUpperCaseLetter -->
+    <Rule Id="SA1302" Action="None" /><!-- InterfaceNamesMustBeginWithI -->
+    <Rule Id="SA1303" Action="None" /><!-- ConstFieldNamesMustBeginWithUpperCaseLetter -->
+    <Rule Id="SA1304" Action="None" /><!-- NonPrivateReadonlyFieldsMustBeginWithUpperCaseLetter -->
+    <Rule Id="SA1306" Action="None" /><!-- FieldNamesMustBeginWithLowerCaseLetter -->
+    <Rule Id="SA1307" Action="None" /><!-- AccessibleFieldsMustBeginWithUpperCaseLetter -->
+    <Rule Id="SA1311" Action="None" /><!-- StaticReadonlyFieldsMustBeginWithUpperCaseLetter -->
+    <Rule Id="SA1312" Action="None" /><!-- VariableNamesMustBeginWithLowerCaseLetter -->
+    <Rule Id="SA1313" Action="None" /><!-- ParameterNamesMustBeginWithLowerCaseLetter -->
+
     <!-- Rules that conflict with OpenRA project style conventions -->
     <Rule Id="SA0001" Action="None" /><!-- XmlCommentAnalysisDisabled -->
     <Rule Id="SA1101" Action="None" /><!-- PrefixLocalCallsWithThis -->
@@ -42,5 +68,12 @@
     <Rule Id="SA1214" Action="None" /><!-- ReadonlyElementsMustAppearBeforeNonReadonlyElements -->
     <Rule Id="SA1413" Action="None" /><!-- UseTrailingCommasInMultiLineInitializers -->
     <Rule Id="SA1516" Action="None" /><!-- ElementsMustBeSeparatedByBlankLine -->
+    <Rule Id="SA1604" Action="None" /><!-- ElementDocumentationShouldHaveSummary -->
+    <Rule Id="SA1611" Action="None" /><!-- ElementParametersShouldBeDocumented -->
+    <Rule Id="SA1615" Action="None" /><!-- ElementReturnValueShouldBeDocumented -->
+    <Rule Id="SA1618" Action="None" /><!-- GenericTypeParametersShouldBeDocumented -->
+    <Rule Id="SA1623" Action="None" /><!-- PropertySummaryDocumentationShouldMatchAccessors -->
+    <Rule Id="SA1629" Action="None" /><!-- DocumentationTextShouldEndWithAPeriod -->
+    <Rule Id="SA1642" Action="None" /><!-- ConstructorSummaryDocumentationShouldBeginWithStandardText -->
   </Rules>
 </RuleSet>

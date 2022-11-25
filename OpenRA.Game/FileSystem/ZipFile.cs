@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -14,13 +14,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ICSharpCode.SharpZipLib.Zip;
-using OpenRA.Primitives;
 
 namespace OpenRA.FileSystem
 {
 	public class ZipFileLoader : IPackageLoader
 	{
-		static readonly string[] Extensions = { ".zip", ".oramap" };
+		static readonly uint ZipSignature = 0x04034b50;
 
 		class ReadOnlyZipFile : IReadOnlyPackage
 		{
@@ -67,8 +66,7 @@ namespace OpenRA.FileSystem
 
 			public void Dispose()
 			{
-				if (pkg != null)
-					pkg.Close();
+				pkg?.Close();
 			}
 
 			public IReadOnlyPackage OpenPackage(string filename, FileSystem context)
@@ -82,12 +80,11 @@ namespace OpenRA.FileSystem
 					return new ZipFolder(this, filename);
 
 				// Other package types can be loaded normally
-				IReadOnlyPackage package;
 				var s = GetStream(filename);
 				if (s == null)
 					return null;
 
-				if (context.TryParsePackage(s, filename, out package))
+				if (context.TryParsePackage(s, filename, out var package))
 					return package;
 
 				s.Dispose();
@@ -144,8 +141,8 @@ namespace OpenRA.FileSystem
 
 		sealed class ZipFolder : IReadOnlyPackage
 		{
-			public string Name { get { return path; } }
-			public ReadOnlyZipFile Parent { get; private set; }
+			public string Name => path;
+			public ReadOnlyZipFile Parent { get; }
 			readonly string path;
 
 			public ZipFolder(ReadOnlyZipFile parent, string path)
@@ -209,7 +206,10 @@ namespace OpenRA.FileSystem
 
 		public bool TryParsePackage(Stream s, string filename, FileSystem context, out IReadOnlyPackage package)
 		{
-			if (!Extensions.Any(e => filename.EndsWith(e, StringComparison.InvariantCultureIgnoreCase)))
+			var readSignature = s.ReadUInt32();
+			s.Position -= 4;
+
+			if (readSignature != ZipSignature)
 			{
 				package = null;
 				return false;
@@ -221,10 +221,13 @@ namespace OpenRA.FileSystem
 
 		public static bool TryParseReadWritePackage(string filename, out IReadWritePackage package)
 		{
-			if (!Extensions.Any(e => filename.EndsWith(e, StringComparison.InvariantCultureIgnoreCase)))
+			using (var s = File.OpenRead(filename))
 			{
-				package = null;
-				return false;
+				if (s.ReadUInt32() != ZipSignature)
+				{
+					package = null;
+					return false;
+				}
 			}
 
 			package = new ReadWriteZipFile(filename);

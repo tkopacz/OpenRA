@@ -1,4 +1,4 @@
-MapFormat: 11
+MapFormat: 12
 
 RequiresMod: d2k
 
@@ -33,52 +33,52 @@ Players:
 		LockFaction: True
 		Faction: harkonnen
 		LockColor: True
-		Color: FE0000
+		Color: D64A42
 		Enemies: Atreides Main Base, Atreides Small Base 1, Atreides Small Base 2, Corrino Main Base, Corrino Small Base, Creeps
 	PlayerReference@Atreides Main Base:
 		Name: Atreides Main Base
 		LockFaction: True
 		Faction: atreides
 		LockColor: True
-		Color: 9191FF
+		Color: 5A7394
 		Allies: Atreides Small Base 1, Atreides Small Base 2, Corrino Main Base, Corrino Small Base
-		Enemies: Harkonnen
+		Enemies: Harkonnen, Creeps
 		Bot: campaign
 	PlayerReference@Atreides Small Base 1:
 		Name: Atreides Small Base 1
 		LockFaction: True
 		Faction: atreides
 		LockColor: True
-		Color: 9191FF
+		Color: 5A7394
 		Allies: Atreides Main Base, Atreides Small Base 2, Corrino Main Base, Corrino Small Base
-		Enemies: Harkonnen
+		Enemies: Harkonnen, Creeps
 		Bot: campaign
 	PlayerReference@Atreides Small Base 2:
 		Name: Atreides Small Base 2
 		LockFaction: True
 		Faction: atreides
 		LockColor: True
-		Color: 9191FF
+		Color: 5A7394
 		Allies: Atreides Main Base, Atreides Small Base 1, Corrino Main Base, Corrino Small Base
-		Enemies: Harkonnen
+		Enemies: Harkonnen, Creeps
 		Bot: campaign
 	PlayerReference@Corrino Main Base:
 		Name: Corrino Main Base
 		LockFaction: True
 		Faction: corrino
 		LockColor: True
-		Color: 7D00FE
+		Color: 73007B
 		Allies: Atreides Main Base, Atreides Small Base 1, Atreides Small Base 2, Corrino Small Base
-		Enemies: Harkonnen
+		Enemies: Harkonnen, Creeps
 		Bot: campaign
 	PlayerReference@Corrino Small Base:
 		Name: Corrino Small Base
 		LockFaction: True
 		Faction: corrino
 		LockColor: True
-		Color: 7D00FE
+		Color: 73007B
 		Allies: Atreides Main Base, Atreides Small Base 1, Atreides Small Base 2, Corrino Main Base
-		Enemies: Harkonnen
+		Enemies: Harkonnen, Creeps
 		Bot: campaign
 
 Actors:

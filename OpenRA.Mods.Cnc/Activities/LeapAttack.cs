@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,6 +9,7 @@
  */
 #endregion
 
+using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Activities;
 using OpenRA.Mods.Cnc.Traits;
@@ -27,6 +28,7 @@ namespace OpenRA.Mods.Cnc.Activities
 		readonly Mobile mobile;
 		readonly bool allowMovement;
 		readonly bool forceAttack;
+		readonly Color? targetLineColor;
 
 		Target target;
 		Target lastVisibleTarget;
@@ -36,9 +38,10 @@ namespace OpenRA.Mods.Cnc.Activities
 		BitSet<TargetableType> lastVisibleTargetTypes;
 		Player lastVisibleOwner;
 
-		public LeapAttack(Actor self, Target target, bool allowMovement, bool forceAttack, AttackLeap attack, AttackLeapInfo info)
+		public LeapAttack(Actor self, in Target target, bool allowMovement, bool forceAttack, AttackLeap attack, AttackLeapInfo info, Color? targetLineColor = null)
 		{
 			this.target = target;
+			this.targetLineColor = targetLineColor;
 			this.info = info;
 			this.attack = attack;
 			this.allowMovement = allowMovement;
@@ -72,20 +75,12 @@ namespace OpenRA.Mods.Cnc.Activities
 			attack.IsAiming = true;
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
-			// Run this even if the target became invalid to avoid visual glitches
-			if (ChildActivity != null)
-			{
-				ChildActivity = ActivityUtils.RunActivity(self, ChildActivity);
-				return this;
-			}
-
 			if (IsCanceling)
-				return NextActivity;
+				return true;
 
-			bool targetIsHiddenActor;
-			target = target.Recalculate(self.Owner, out targetIsHiddenActor);
+			target = target.Recalculate(self.Owner, out var targetIsHiddenActor);
 			if (!targetIsHiddenActor && target.Type == TargetType.Actor)
 			{
 				lastVisibleTarget = Target.FromTargetPositions(target);
@@ -95,16 +90,11 @@ namespace OpenRA.Mods.Cnc.Activities
 				lastVisibleTargetTypes = target.Actor.GetEnabledTargetTypes();
 			}
 
-			var oldUseLastVisibleTarget = useLastVisibleTarget;
 			useLastVisibleTarget = targetIsHiddenActor || !target.IsValidFor(self);
-
-			// Update target lines if required
-			if (useLastVisibleTarget != oldUseLastVisibleTarget)
-				self.SetTargetLine(useLastVisibleTarget ? lastVisibleTarget : target, Color.Red, false);
 
 			// Target is hidden or dead, and we don't have a fallback position to move towards
 			if (useLastVisibleTarget && !lastVisibleTarget.IsValidFor(self))
-				return NextActivity;
+				return true;
 
 			var pos = self.CenterPosition;
 			var checkTarget = useLastVisibleTarget ? lastVisibleTarget : target;
@@ -112,27 +102,27 @@ namespace OpenRA.Mods.Cnc.Activities
 			if (!checkTarget.IsInRange(pos, lastVisibleMaxRange) || checkTarget.IsInRange(pos, lastVisibleMinRange))
 			{
 				if (!allowMovement || lastVisibleMaxRange == WDist.Zero || lastVisibleMaxRange < lastVisibleMinRange)
-					return NextActivity;
+					return true;
 
-				QueueChild(self, mobile.MoveWithinRange(target, lastVisibleMinRange, lastVisibleMaxRange, checkTarget.CenterPosition, Color.Red), true);
-				return this;
+				QueueChild(mobile.MoveWithinRange(target, lastVisibleMinRange, lastVisibleMaxRange, checkTarget.CenterPosition, Color.Red));
+				return false;
 			}
 
 			// Ready to leap, but target isn't visible
 			if (targetIsHiddenActor || target.Type != TargetType.Actor)
-				return NextActivity;
+				return true;
 
 			// Target is not valid
 			if (!target.IsValidFor(self) || !attack.HasAnyValidWeapons(target))
-				return NextActivity;
+				return true;
 
 			var edible = target.Actor.TraitOrDefault<EdibleByLeap>();
 			if (edible == null || !edible.CanLeap(self))
-				return NextActivity;
+				return true;
 
 			// Can't leap yet
 			if (attack.Armaments.All(a => a.IsReloading))
-				return this;
+				return false;
 
 			// Use CenterOfSubCell with ToSubCell instead of target.Centerposition
 			// to avoid continuous facing adjustments as the target moves
@@ -141,17 +131,17 @@ namespace OpenRA.Mods.Cnc.Activities
 
 			var destination = self.World.Map.CenterOfSubCell(target.Actor.Location, targetSubcell);
 			var origin = self.World.Map.CenterOfSubCell(self.Location, mobile.FromSubCell);
-			var desiredFacing = (destination - origin).Yaw.Facing;
+			var desiredFacing = (destination - origin).Yaw;
 			if (mobile.Facing != desiredFacing)
 			{
-				QueueChild(self, new Turn(self, desiredFacing), true);
-				return this;
+				QueueChild(new Turn(self, desiredFacing));
+				return false;
 			}
 
-			QueueChild(self, new Leap(self, target, mobile, targetMobile, info.Speed.Length, attack, edible), true);
+			QueueChild(new Leap(target, mobile, targetMobile, info.Speed.Length, attack, edible));
 
 			// Re-queue the child activities to kill the target if it didn't die in one go
-			return this;
+			return false;
 		}
 
 		protected override void OnLastRun(Actor self)
@@ -165,8 +155,15 @@ namespace OpenRA.Mods.Cnc.Activities
 			if (newStance > oldStance || forceAttack)
 				return;
 
-			if (!autoTarget.HasValidTargetPriority(self, lastVisibleOwner, lastVisibleTargetTypes))
+			// If lastVisibleTarget is invalid we could never view the target in the first place, so we just drop it here too
+			if (!lastVisibleTarget.IsValidFor(self) || !autoTarget.HasValidTargetPriority(self, lastVisibleOwner, lastVisibleTargetTypes))
 				target = Target.Invalid;
+		}
+
+		public override IEnumerable<TargetLineNode> TargetLineNodes(Actor self)
+		{
+			if (targetLineColor != null)
+				yield return new TargetLineNode(useLastVisibleTarget ? lastVisibleTarget : target, targetLineColor.Value);
 		}
 	}
 }

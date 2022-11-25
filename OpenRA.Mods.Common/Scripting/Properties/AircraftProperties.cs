@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -38,11 +38,11 @@ namespace OpenRA.Mods.Common.Scripting
 		[Desc("Return to the base, which is either the destination given, or an auto-selected one otherwise.")]
 		public void ReturnToBase(Actor destination = null)
 		{
-			Self.QueueActivity(new ReturnToBase(Self, false, destination));
+			Self.QueueActivity(new ReturnToBase(Self, destination, true));
 		}
 
 		[ScriptActorPropertyActivity]
-		[Desc("Queues a landing activity on the specififed actor.")]
+		[Desc("Queues a landing activity on the specified actor.")]
 		public void Land(Actor landOn)
 		{
 			Self.QueueActivity(new Land(Self, Target.FromActor(landOn)));

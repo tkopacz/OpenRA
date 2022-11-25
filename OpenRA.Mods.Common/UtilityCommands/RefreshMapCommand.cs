@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -15,7 +15,7 @@ namespace OpenRA.Mods.Common.UtilityCommands
 {
 	class RefreshMapCommand : IUtilityCommand
 	{
-		string IUtilityCommand.Name { get { return "--refresh-map"; } }
+		string IUtilityCommand.Name => "--refresh-map";
 
 		bool IUtilityCommand.ValidateArguments(string[] args)
 		{
@@ -28,7 +28,7 @@ namespace OpenRA.Mods.Common.UtilityCommands
 			// HACK: The engine code assumes that Game.modData is set.
 			// HACK: We know that maps can only be oramap or folders, which are ReadWrite
 			var modData = Game.ModData = utility.ModData;
-			using (var package = new Folder(".").OpenPackage(args[1], modData.ModFiles))
+			using (var package = new Folder(Platform.EngineDir).OpenPackage(args[1], modData.ModFiles))
 				new Map(modData, package).Save((IReadWritePackage)package);
 		}
 	}

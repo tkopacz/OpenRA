@@ -1,27 +1,27 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
    the License, or (at your option) any later version. For more
    information, see COPYING.
 ]]
-DifficultySetting = Map.LobbyOption("difficulty")
 timeTracker = 0
 amount = 1
 SendAnts = true
 
 AttackAngles = {
 	{ waypoint4.Location, waypoint18.Location, waypoint5.Location, waypoint15.Location },
-	{ waypoint20.Location, waypoint10.Location, waypoint2.Location },
-	{ waypoint17.Location, waypoint1.Location },
+	{ waypoint20.Location, waypoint2.Location },
+	{ waypoint21.Location, waypoint10.Location, waypoint2.Location },
+	{ waypoint7.Location, waypoint17.Location, waypoint1.Location },
 	{ waypoint8.Location, waypoint9.Location, waypoint19.Location }
 }
 
 AttackInterval = {
 	easy = DateTime.Seconds(40),
 	normal = DateTime.Seconds(30),
-	hard = DateTime.Seconds(20)
+	hard = DateTime.Seconds(25)
 }
 
 AntTypes = {
@@ -32,7 +32,7 @@ AntTypes = {
 MaxAnts = {
 	easy = 3,
 	normal = 5,
-	hard = 7
+	hard = 6
 }
 
 MaxFireAnts = {
@@ -52,19 +52,19 @@ StartAntAttack = function()
 		antType = Utils.Random(AntTypes)
 	end
 
-	if antType == "warriorant" and DifficultySetting == "easy" then
+	if antType == "warriorant" and Difficulty == "easy" then
 		antType = "scoutant"
 	end
 
-	if DifficultySetting == "normal" and timeTracker < DateTime.Minutes(6) and antType == "scoutant" then
+	if Difficulty == "normal" and timeTracker < DateTime.Minutes(6) and antType == "scoutant" then
 		antType = "warriorant"
-	elseif DifficultySetting == "hard" and timeTracker < DateTime.Minutes(12) and antType == "scoutant" then
+	elseif Difficulty == "hard" and timeTracker < DateTime.Minutes(8) and antType == "scoutant" then
 		antType = "warriorant"
 	end
 
-	local max = MaxAnts[DifficultySetting] - math.ceil(timeTracker / DateTime.Minutes(6))
+	local max = MaxAnts[Difficulty] - math.ceil(timeTracker / DateTime.Minutes(6))
 	if timeTracker > DateTime.Minutes(3) and antType == "fireant" then
-		amount = Utils.RandomInteger(1, MaxFireAnts[DifficultySetting])
+		amount = Utils.RandomInteger(1, MaxFireAnts[Difficulty])
 	elseif timeTracker > 15 and antType == "fireant" then
 		antType = "scoutant"
 	else
@@ -82,7 +82,7 @@ StartAntAttack = function()
 
 	-- Setup next wave
 	if SendAnts then
-		Trigger.AfterDelay(AttackInterval[DifficultySetting], function()
+		Trigger.AfterDelay(AttackInterval[Difficulty], function()
 			StartAntAttack()
 		end)
 	end
@@ -90,8 +90,4 @@ end
 
 EndAntAttack = function()
 	SendAnts = false
-end
-
-InitEnemyPlayers = function()
-	AntMan = Player.GetPlayer("AntMan")
 end

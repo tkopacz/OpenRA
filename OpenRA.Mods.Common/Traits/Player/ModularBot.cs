@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,7 +10,6 @@
 #endregion
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Support;
@@ -19,7 +18,8 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Traits
 {
 	[Desc("Bot that uses BotModules.")]
-	public sealed class ModularBotInfo : IBotInfo, ITraitInfo
+	[TraitLocation(SystemActors.Player)]
+	public sealed class ModularBotInfo : TraitInfo, IBotInfo
 	{
 		[FieldLoader.Require]
 		[Desc("Internal id for this bot.")]
@@ -31,11 +31,11 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Minimum portion of pending orders to issue each tick (e.g. 5 issues at least 1/5th of all pending orders). Excess orders remain queued for subsequent ticks.")]
 		public readonly int MinOrderQuotientPerTick = 5;
 
-		string IBotInfo.Type { get { return Type; } }
+		string IBotInfo.Type => Type;
 
-		string IBotInfo.Name { get { return Name; } }
+		string IBotInfo.Name => Name;
 
-		public object Create(ActorInitializer init) { return new ModularBot(this, init); }
+		public override object Create(ActorInitializer init) { return new ModularBot(this, init); }
 	}
 
 	public sealed class ModularBot : ITick, IBot, INotifyDamage
@@ -51,8 +51,8 @@ namespace OpenRA.Mods.Common.Traits
 		IBotTick[] tickModules;
 		IBotRespondToAttack[] attackResponseModules;
 
-		IBotInfo IBot.Info { get { return info; } }
-		Player IBot.Player { get { return player; } }
+		IBotInfo IBot.Info => info;
+		Player IBot.Player => player;
 
 		public ModularBot(ModularBotInfo info, ActorInitializer init)
 		{

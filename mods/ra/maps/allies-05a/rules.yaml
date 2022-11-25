@@ -1,6 +1,6 @@
 World:
 	LuaScript:
-		Scripts: allies05a.lua, allies05a-AI.lua
+		Scripts: campaign.lua, utils.lua, allies05a.lua, allies05a-AI.lua
 	MissionData:
 		Briefing: Rescue Tanya.\n\nOnce disguised, your spy can move past any enemy unit, except dogs, without being detected. Direct him into the weapons factory located at a nearby Soviet Base where he will hijack a truck and free Tanya.\n\nWith Tanya's help, take out the air defenses on the island and a Chinook will arrive to rescue her.\n\nThen destroy all remaining Soviet buildings and units.
 		BriefingVideo: ally5.vqa
@@ -12,12 +12,13 @@ World:
 	ScriptLobbyDropdown@difficulty:
 		ID: difficulty
 		Label: Difficulty
+		Description: The difficulty of the mission
 		Values:
 			easy: Easy
 			normal: Normal
 			hard: Hard
 			tough: Real tough guy
-		Default: easy
+		Default: normal
 
 Camera.Small:
 	Inherits: CAMERA
@@ -35,7 +36,7 @@ SAM:
 LST:
 	-Selectable:
 	Targetable:
-		TargetTypes: Ground, Water
+		TargetTypes: GroundActor, WaterActor
 	Interactable:
 
 LST.IN:
@@ -50,7 +51,7 @@ TRAN:
 	RevealsShroud:
 		Range: 4c0
 	Targetable@GROUND:
-		TargetTypes: Ground
+		TargetTypes: GroundActor
 	Interactable:
 
 TRAN.IN:
@@ -62,13 +63,11 @@ TRAN.IN:
 
 TRUK.mission:
 	Inherits: TRUK
-	Buildable:
-		Prerequisites: ~disabled
 	WithFacingSpriteBody:
 	-SpawnActorOnDeath:
 	RevealsShroud:
 		Range: 4c0
-		ValidStances: Ally, Enemy
+		ValidRelationships: Ally, Enemy
 		RequiresCondition: hijacked
 	ExternalCondition@hijacked:
 		Condition: hijacked
@@ -82,22 +81,24 @@ SPY:
 WEAP:
 	-InfiltrateForSupportPower:
 	Targetable:
-		TargetTypes: Ground, C4, DetonateAttack, Structure
+		TargetTypes: GroundActor, C4, DetonateAttack, Structure
 
 WEAP.infiltratable:
 	Inherits: WEAP
 	Buildable:
 		Prerequisites: ~disabled
 	Targetable@Spy:
-		TargetTypes: Ground, C4, DetonateAttack, Structure, Mission Objectives
+		TargetTypes: GroundActor, C4, DetonateAttack, Structure, Mission Objectives
 	RenderSprites:
 		Image: WEAP
+	ProvidesPrerequisite:
+		Prerequisite: weap
 
 MISS:
 	Tooltip:
 		Name: Prison
 	Targetable:
-		TargetTypes: Ground, C4, DetonateAttack, Structure, Mission Objectives
+		TargetTypes: GroundActor, C4, DetonateAttack, Structure, Mission Objectives
 	AttackOmni:
 	Armament:
 		Weapon: PrisonColt

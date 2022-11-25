@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -24,14 +24,14 @@ namespace OpenRA.Mods.Cnc.Activities
 		readonly INotifyInfiltration[] notifiers;
 		Actor enterActor;
 
-		public Infiltrate(Actor self, Target target, Infiltrates infiltrates)
-			: base(self, target, Color.Red)
+		public Infiltrate(Actor self, in Target target, Infiltrates infiltrates, Color? targetLineColor)
+			: base(self, target, targetLineColor)
 		{
 			this.infiltrates = infiltrates;
 			notifiers = self.TraitsImplementing<INotifyInfiltration>().ToArray();
 		}
 
-		protected override void TickInner(Actor self, Target target, bool targetIsDeadOrHiddenActor)
+		protected override void TickInner(Actor self, in Target target, bool targetIsDeadOrHiddenActor)
 		{
 			if (infiltrates.IsTraitDisabled)
 				Cancel(self, true);
@@ -65,12 +65,13 @@ namespace OpenRA.Mods.Cnc.Activities
 				t.Infiltrated(targetActor, self, infiltrates.Info.Types);
 
 			var exp = self.Owner.PlayerActor.TraitOrDefault<PlayerExperience>();
-			if (exp != null)
-				exp.GiveExperience(infiltrates.Info.PlayerExperience);
+			exp?.GiveExperience(infiltrates.Info.PlayerExperience);
 
 			if (!string.IsNullOrEmpty(infiltrates.Info.Notification))
 				Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech",
 					infiltrates.Info.Notification, self.Owner.Faction.InternalName);
+
+			TextNotificationsManager.AddTransientLine(infiltrates.Info.TextNotification, self.Owner);
 
 			if (infiltrates.Info.EnterBehaviour == EnterBehaviour.Dispose)
 				self.Dispose();

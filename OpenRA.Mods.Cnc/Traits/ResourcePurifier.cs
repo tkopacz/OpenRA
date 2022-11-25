@@ -1,6 +1,6 @@
-﻿#region Copyright & License Information
+#region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,7 +9,6 @@
  */
 #endregion
 
-using OpenRA.Mods.Common;
 using OpenRA.Mods.Common.Effects;
 using OpenRA.Mods.Common.Traits;
 using OpenRA.Traits;
@@ -32,10 +31,10 @@ namespace OpenRA.Mods.Cnc.Traits
 		[Desc("How often the cash ticks can appear.")]
 		public readonly int TickRate = 10;
 
-		public override object Create(ActorInitializer init) { return new ResourcePurifier(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new ResourcePurifier(this); }
 	}
 
-	public class ResourcePurifier : ConditionalTrait<ResourcePurifierInfo>, INotifyCreated, INotifyResourceAccepted, ITick, INotifyOwnerChanged
+	public class ResourcePurifier : ConditionalTrait<ResourcePurifierInfo>, INotifyResourceAccepted, ITick, INotifyOwnerChanged
 	{
 		readonly int[] modifier;
 
@@ -43,30 +42,26 @@ namespace OpenRA.Mods.Cnc.Traits
 		int currentDisplayTick;
 		int currentDisplayValue;
 
-		public ResourcePurifier(Actor self, ResourcePurifierInfo info)
+		public ResourcePurifier(ResourcePurifierInfo info)
 			: base(info)
 		{
 			modifier = new int[] { Info.Modifier };
 			currentDisplayTick = Info.TickRate;
 		}
 
-		void INotifyCreated.Created(Actor self)
+		protected override void Created(Actor self)
 		{
-			// Special case handling is required for the Player actor.
-			// Created is called before Player.PlayerActor is assigned,
-			// so we must query other player traits from self, knowing that
-			// it refers to the same actor as self.Owner.PlayerActor
-			var playerActor = self.Info.Name == "player" ? self : self.Owner.PlayerActor;
+			playerResources = self.Owner.PlayerActor.Trait<PlayerResources>();
 
-			playerResources = playerActor.Trait<PlayerResources>();
+			base.Created(self);
 		}
 
-		void INotifyResourceAccepted.OnResourceAccepted(Actor self, Actor refinery, int amount)
+		void INotifyResourceAccepted.OnResourceAccepted(Actor self, Actor refinery, string resourceType, int count, int value)
 		{
 			if (IsTraitDisabled)
 				return;
 
-			var cash = Util.ApplyPercentageModifiers(amount, modifier);
+			var cash = Common.Util.ApplyPercentageModifiers(value, modifier);
 			playerResources.GiveCash(cash);
 
 			if (Info.ShowTicks && self.Info.HasTraitInfo<IOccupySpaceInfo>())

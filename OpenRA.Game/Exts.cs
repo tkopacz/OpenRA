@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -38,12 +38,6 @@ namespace OpenRA
 			catch { return def; }
 		}
 
-		public static void Do<T>(this IEnumerable<T> e, Action<T> fn)
-		{
-			foreach (var ee in e)
-				fn(ee);
-		}
-
 		public static Lazy<T> Lazy<T>(Func<T> p) { return new Lazy<T>(p); }
 
 		public static IEnumerable<string> GetNamespaces(this Assembly a)
@@ -53,7 +47,7 @@ namespace OpenRA
 
 		public static bool HasAttribute<T>(this MemberInfo mi)
 		{
-			return mi.GetCustomAttributes(typeof(T), true).Length != 0;
+			return Attribute.IsDefined(mi, typeof(T));
 		}
 
 		public static T[] GetCustomAttributes<T>(this MemberInfo mi, bool inherit)
@@ -80,7 +74,7 @@ namespace OpenRA
 
 		static int WindingDirectionTest(int2 v0, int2 v1, int2 p)
 		{
-			return (v1.X - v0.X) * (p.Y - v0.Y) - (p.X - v0.X) * (v1.Y - v0.Y);
+			return Math.Sign((v1.X - v0.X) * (p.Y - v0.Y) - (p.X - v0.X) * (v1.Y - v0.Y));
 		}
 
 		public static bool PolygonContains(this int2[] polygon, int2 p)
@@ -101,6 +95,16 @@ namespace OpenRA
 			return windingNumber != 0;
 		}
 
+		public static bool LinesIntersect(int2 a, int2 b, int2 c, int2 d)
+		{
+			// If line segments AB and CD intersect:
+			//  - the triangles ACD and BCD must have opposite sense (clockwise or anticlockwise)
+			//  - the triangles CAB and DAB must have opposite sense
+			// Segments intersect if the orientation (clockwise or anticlockwise) of the two points in each line segment are opposite with respect to the other
+			// Assumes that lines are not collinear
+			return WindingDirectionTest(c, d, a) != WindingDirectionTest(c, d, b) && WindingDirectionTest(a, b, c) != WindingDirectionTest(a, b, d);
+		}
+
 		public static bool HasModifier(this Modifiers k, Modifiers mod)
 		{
 			// PERF: Enum.HasFlag is slower and requires allocations.
@@ -110,13 +114,19 @@ namespace OpenRA
 		public static V GetOrAdd<K, V>(this Dictionary<K, V> d, K k)
 			where V : new()
 		{
-			return d.GetOrAdd(k, _ => new V());
+			return d.GetOrAdd(k, new V());
+		}
+
+		public static V GetOrAdd<K, V>(this Dictionary<K, V> d, K k, V v)
+		{
+			if (!d.TryGetValue(k, out var ret))
+				d.Add(k, ret = v);
+			return ret;
 		}
 
 		public static V GetOrAdd<K, V>(this Dictionary<K, V> d, K k, Func<K, V> createFn)
 		{
-			V ret;
-			if (!d.TryGetValue(k, out ret))
+			if (!d.TryGetValue(k, out var ret))
 				d.Add(k, ret = createFn(k));
 			return ret;
 		}
@@ -143,12 +153,32 @@ namespace OpenRA
 			if (xs.Count == 0)
 			{
 				if (throws)
-					throw new ArgumentException("Collection must not be empty.", "ts");
+					throw new ArgumentException("Collection must not be empty.", nameof(ts));
 				else
-					return default(T);
+					return default;
 			}
 			else
 				return xs.ElementAt(r.Next(xs.Count));
+		}
+
+		public static Rectangle Union(this IEnumerable<Rectangle> rects)
+		{
+			// PERF: Avoid LINQ.
+			var first = true;
+			var result = Rectangle.Empty;
+			foreach (var rect in rects)
+			{
+				if (first)
+				{
+					first = false;
+					result = rect;
+					continue;
+				}
+
+				result = Rectangle.Union(rect, result);
+			}
+
+			return result;
 		}
 
 		public static float Product(this IEnumerable<float> xs)
@@ -200,9 +230,9 @@ namespace OpenRA
 			{
 				if (!e.MoveNext())
 					if (throws)
-						throw new ArgumentException("Collection must not be empty.", "ts");
+						throw new ArgumentException("Collection must not be empty.", nameof(ts));
 					else
-						return default(T);
+						return default;
 				t = e.Current;
 				u = selector(t);
 				while (e.MoveNext())
@@ -242,7 +272,7 @@ namespace OpenRA
 		public static int ISqrt(int number, ISqrtRoundMode round = ISqrtRoundMode.Floor)
 		{
 			if (number < 0)
-				throw new InvalidOperationException("Attempted to calculate the square root of a negative integer: {0}".F(number));
+				throw new InvalidOperationException($"Attempted to calculate the square root of a negative integer: {number}");
 
 			return (int)ISqrt((uint)number, round);
 		}
@@ -283,7 +313,7 @@ namespace OpenRA
 		public static long ISqrt(long number, ISqrtRoundMode round = ISqrtRoundMode.Floor)
 		{
 			if (number < 0)
-				throw new InvalidOperationException("Attempted to calculate the square root of a negative integer: {0}".F(number));
+				throw new InvalidOperationException($"Attempted to calculate the square root of a negative integer: {number}");
 
 			return (long)ISqrt((ulong)number, round);
 		}
@@ -321,10 +351,14 @@ namespace OpenRA
 			return root;
 		}
 
+		public static int MultiplyBySqrtTwo(short number)
+		{
+			return number * 46341 / 32768;
+		}
+
 		public static int IntegerDivisionRoundingAwayFromZero(int dividend, int divisor)
 		{
-			int remainder;
-			var quotient = Math.DivRem(dividend, divisor, out remainder);
+			var quotient = Math.DivRem(dividend, divisor, out var remainder);
 			if (remainder == 0)
 				return quotient;
 			return quotient + (Math.Sign(dividend) == Math.Sign(divisor) ? 1 : -1);
@@ -338,6 +372,11 @@ namespace OpenRA
 		public static IEnumerable<T> Append<T>(this IEnumerable<T> ts, params T[] moreTs)
 		{
 			return ts.Concat(moreTs);
+		}
+
+		public static IEnumerable<T> Exclude<T>(this IEnumerable<T> ts, params T[] exclusions)
+		{
+			return ts.Except(exclusions);
 		}
 
 		public static HashSet<T> ToHashSet<T>(this IEnumerable<T> source)
@@ -362,7 +401,8 @@ namespace OpenRA
 
 			// Try to build a dictionary and log all duplicates found (if any):
 			var dupKeys = new Dictionary<TKey, List<string>>();
-			var d = new Dictionary<TKey, TElement>();
+			var capacity = source is ICollection<TSource> collection ? collection.Count : 0;
+			var d = new Dictionary<TKey, TElement>(capacity);
 			foreach (var item in source)
 			{
 				var key = keySelector(item);
@@ -373,30 +413,28 @@ namespace OpenRA
 					continue;
 
 				// Check for a key conflict:
-				if (d.ContainsKey(key))
+				if (!d.TryAdd(key, element))
 				{
-					List<string> dupKeyMessages;
-					if (!dupKeys.TryGetValue(key, out dupKeyMessages))
+					if (!dupKeys.TryGetValue(key, out var dupKeyMessages))
 					{
 						// Log the initial conflicting value already inserted:
-						dupKeyMessages = new List<string>();
-						dupKeyMessages.Add(logValue(d[key]));
+						dupKeyMessages = new List<string>
+						{
+							logValue(d[key])
+						};
 						dupKeys.Add(key, dupKeyMessages);
 					}
 
 					// Log this conflicting value:
 					dupKeyMessages.Add(logValue(element));
-					continue;
 				}
-
-				d.Add(key, element);
 			}
 
 			// If any duplicates were found, throw a descriptive error
 			if (dupKeys.Count > 0)
 			{
-				var badKeysFormatted = string.Join(", ", dupKeys.Select(p => "{0}: [{1}]".F(logKey(p.Key), string.Join(",", p.Value))));
-				var msg = "{0}, duplicate values found for the following keys: {1}".F(debugName, badKeysFormatted);
+				var badKeysFormatted = string.Join(", ", dupKeys.Select(p => $"{logKey(p.Key)}: [{string.Join(",", p.Value)}]"));
+				var msg = $"{debugName}, duplicate values found for the following keys: {badKeysFormatted}";
 				throw new ArgumentException(msg);
 			}
 
@@ -477,8 +515,7 @@ namespace OpenRA
 
 		public static bool IsTraitEnabled<T>(this T trait)
 		{
-			var disabledTrait = trait as IDisabledTrait;
-			return disabledTrait == null || !disabledTrait.IsTraitDisabled;
+			return !(trait is IDisabledTrait disabledTrait) || !disabledTrait.IsTraitDisabled;
 		}
 
 		public static T FirstEnabledTraitOrDefault<T>(this IEnumerable<T> ts)
@@ -488,7 +525,7 @@ namespace OpenRA
 				if (t.IsTraitEnabled())
 					return t;
 
-			return default(T);
+			return default;
 		}
 
 		public static T FirstEnabledTraitOrDefault<T>(this T[] ts)
@@ -498,8 +535,72 @@ namespace OpenRA
 				if (t.IsTraitEnabled())
 					return t;
 
-			return default(T);
+			return default;
 		}
+
+		public static T FirstEnabledConditionalTraitOrDefault<T>(this IEnumerable<T> ts) where T : IDisabledTrait
+		{
+			// PERF: Avoid LINQ.
+			foreach (var t in ts)
+				if (!t.IsTraitDisabled)
+					return t;
+
+			return default;
+		}
+
+		public static T FirstEnabledConditionalTraitOrDefault<T>(this T[] ts) where T : IDisabledTrait
+		{
+			// PERF: Avoid LINQ.
+			foreach (var t in ts)
+				if (!t.IsTraitDisabled)
+					return t;
+
+			return default;
+		}
+
+		public static LineSplitEnumerator SplitLines(this string str, char separator)
+		{
+			return new LineSplitEnumerator(str.AsSpan(), separator);
+		}
+	}
+
+	public ref struct LineSplitEnumerator
+	{
+		ReadOnlySpan<char> str;
+		readonly char separator;
+
+		public LineSplitEnumerator(ReadOnlySpan<char> str, char separator)
+		{
+			this.str = str;
+			this.separator = separator;
+			Current = default;
+		}
+
+		public LineSplitEnumerator GetEnumerator() => this;
+
+		public bool MoveNext()
+		{
+			var span = str;
+
+			// Reach the end of the string
+			if (span.Length == 0)
+				return false;
+
+			var index = span.IndexOf(separator);
+			if (index == -1)
+			{
+				// The remaining string is an empty string
+				str = ReadOnlySpan<char>.Empty;
+				Current = span;
+				return true;
+			}
+
+			Current = span.Slice(0, index);
+			str = span.Slice(index + 1);
+			return true;
+		}
+
+		public ReadOnlySpan<char> Current { get; private set; }
 	}
 
 	public static class Enum<T>
@@ -515,7 +616,7 @@ namespace OpenRA
 
 			if (values.Any(x => !names.Contains(x)))
 			{
-				value = default(T);
+				value = default;
 				return false;
 			}
 

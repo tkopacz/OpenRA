@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -27,17 +27,17 @@ namespace OpenRA.Mods.Cnc.Activities
 		readonly bool killOnFailure;
 		readonly BitSet<DamageType> killDamageTypes;
 		CPos destination;
-		bool killCargo;
-		bool screenFlash;
-		string sound;
+		readonly bool killCargo;
+		readonly bool screenFlash;
+		readonly string sound;
 
 		public Teleport(Actor teleporter, CPos destination, int? maximumDistance,
 			bool killCargo, bool screenFlash, string sound, bool interruptable = true,
-			bool killOnFailure = false, BitSet<DamageType> killDamageTypes = default(BitSet<DamageType>))
+			bool killOnFailure = false, BitSet<DamageType> killDamageTypes = default)
 		{
 			var max = teleporter.World.Map.Grid.MaximumTileSearchRange;
 			if (maximumDistance > max)
-				throw new InvalidOperationException("Teleport distance cannot exceed the value of MaximumTileSearchRange ({0}).".F(max));
+				throw new InvalidOperationException($"Teleport distance cannot exceed the value of MaximumTileSearchRange ({max}).");
 
 			this.teleporter = teleporter;
 			this.destination = destination;
@@ -52,7 +52,7 @@ namespace OpenRA.Mods.Cnc.Activities
 				IsInterruptible = false;
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
 			var pc = self.TraitOrDefault<PortableChrono>();
 			if (teleporter == self && pc != null && (!pc.CanTeleport || IsCanceling))
@@ -60,7 +60,7 @@ namespace OpenRA.Mods.Cnc.Activities
 				if (killOnFailure)
 					self.Kill(teleporter, killDamageTypes);
 
-				return NextActivity;
+				return true;
 			}
 
 			var bestCell = ChooseBestDestinationCell(self, destination);
@@ -69,7 +69,7 @@ namespace OpenRA.Mods.Cnc.Activities
 				if (killOnFailure)
 					self.Kill(teleporter, killDamageTypes);
 
-				return NextActivity;
+				return true;
 			}
 
 			destination = bestCell.Value;
@@ -85,7 +85,7 @@ namespace OpenRA.Mods.Cnc.Activities
 				var cargo = self.TraitOrDefault<Cargo>();
 				if (cargo != null && teleporter != null)
 				{
-					while (!cargo.IsEmpty(self))
+					while (!cargo.IsEmpty())
 					{
 						var a = cargo.Unload(self);
 
@@ -97,8 +97,8 @@ namespace OpenRA.Mods.Cnc.Activities
 			}
 
 			// Consume teleport charges if this wasn't triggered via chronosphere
-			if (teleporter == self && pc != null)
-				pc.ResetChargeTime();
+			if (teleporter == self)
+				pc?.ResetChargeTime();
 
 			// Trigger screen desaturate effect
 			if (screenFlash)
@@ -112,7 +112,7 @@ namespace OpenRA.Mods.Cnc.Activities
 					building.PlayCustomAnimation(teleporter, "active");
 			}
 
-			return NextActivity;
+			return true;
 		}
 
 		CPos? ChooseBestDestinationCell(Actor self, CPos destination)
@@ -133,7 +133,7 @@ namespace OpenRA.Mods.Cnc.Activities
 			foreach (var tile in self.World.Map.FindTilesInCircle(destination, max))
 			{
 				if (teleporter.Owner.Shroud.IsExplored(tile)
-					&& (restrictTo == null || (restrictTo != null && restrictTo.Contains(tile)))
+					&& (restrictTo == null || restrictTo.Contains(tile))
 					&& pos.CanEnterCell(tile))
 					return tile;
 			}

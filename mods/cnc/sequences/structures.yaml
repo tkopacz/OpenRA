@@ -132,10 +132,12 @@ pyle:
 	idle:
 		Length: 10
 		Tick: 100
+		ZOffset: -511
 	damaged-idle:
 		Start: 10
 		Length: 10
 		Tick: 100
+		ZOffset: -511
 	dead:
 		Start: 20
 		Tick: 800
@@ -435,21 +437,22 @@ wood:
 		Length: 16
 
 gun:
-	idle:
+	idle: gunmake # Empty first frame. We need WithSpriteBody for the make anim, and WSB needs at least a placeholder default sequence to work
+	turret:
 		Facings: 32
-		UseClassicFacingFudge: True
+		UseClassicFacings: True
 	recoil:
 		Start: 32
 		Facings: 32
-		UseClassicFacingFudge: True
-	damaged-idle:
+		UseClassicFacings: True
+	damaged-turret:
 		Start: 64
 		Facings: 32
-		UseClassicFacingFudge: True
+		UseClassicFacings: True
 	damaged-recoil:
 		Start: 96
 		Facings: 32
-		UseClassicFacingFudge: True
+		UseClassicFacings: True
 	make: gunmake
 		Length: *
 		Tick: 80
@@ -476,7 +479,7 @@ sam:
 	idle:
 		Start: 17
 		Facings: 32
-		UseClassicFacingFudge: True
+		UseClassicFacings: True
 	closing:
 		Start: 50
 		Length: 14
@@ -490,7 +493,7 @@ sam:
 	damaged-idle:
 		Start: 81
 		Facings: 32
-		UseClassicFacingFudge: True
+		UseClassicFacings: True
 	damaged-closing:
 		Start: 114
 		Length: 14
@@ -502,7 +505,7 @@ sam:
 		Start: 0
 	make: sammake
 		Length: 20
-		Tick: 30
+		Tick: 50
 	muzzle: samfire
 		Length: 18
 		Facings: 8

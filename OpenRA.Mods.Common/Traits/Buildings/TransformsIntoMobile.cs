@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,11 +9,10 @@
  */
 #endregion
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using OpenRA.Activities;
 using OpenRA.Mods.Common.Activities;
+using OpenRA.Mods.Common.Pathfinder;
 using OpenRA.Primitives;
 using OpenRA.Traits;
 
@@ -27,11 +26,24 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Locomotor used by the transformed actor. Must be defined on the World actor.")]
 		public readonly string Locomotor = null;
 
+		[CursorReference]
+		[Desc("Cursor to display when a move order can be issued at target location.")]
 		public readonly string Cursor = "move";
+
+		[CursorReference(dictionaryReference: LintDictionaryReference.Values)]
+		[Desc("Cursor overrides to display for specific terrain types.",
+			"A dictionary of [terrain type]: [cursor name].")]
+		public readonly Dictionary<string, string> TerrainCursors = new Dictionary<string, string>();
+
+		[CursorReference]
+		[Desc("Cursor to display when a move order cannot be issued at target location.")]
 		public readonly string BlockedCursor = "move-blocked";
 
 		[VoiceReference]
 		public readonly string Voice = "Action";
+
+		[Desc("Color to use for the target line for regular move orders.")]
+		public readonly Color TargetLineColor = Color.Green;
 
 		[Desc("Require the force-move modifier to display the move cursor.")]
 		public readonly bool RequiresForceMove = false;
@@ -42,12 +54,12 @@ namespace OpenRA.Mods.Common.Traits
 
 		public override void RulesetLoaded(Ruleset rules, ActorInfo ai)
 		{
-			var locomotorInfos = rules.Actors["world"].TraitInfos<LocomotorInfo>();
+			var locomotorInfos = rules.Actors[SystemActors.World].TraitInfos<LocomotorInfo>();
 			LocomotorInfo = locomotorInfos.FirstOrDefault(li => li.Name == Locomotor);
 			if (LocomotorInfo == null)
-				throw new YamlException("A locomotor named '{0}' doesn't exist.".F(Locomotor));
+				throw new YamlException($"A locomotor named '{Locomotor}' doesn't exist.");
 			else if (locomotorInfos.Count(li => li.Name == Locomotor) > 1)
-				throw new YamlException("There is more than one locomotor named '{0}'.".F(Locomotor));
+				throw new YamlException($"There is more than one locomotor named '{Locomotor}'.");
 
 			base.RulesetLoaded(rules, ai);
 		}
@@ -57,6 +69,7 @@ namespace OpenRA.Mods.Common.Traits
 	{
 		readonly Actor self;
 		Transforms[] transforms;
+		Locomotor locomotor;
 
 		public TransformsIntoMobile(ActorInitializer init, TransformsIntoMobileInfo info)
 			: base(info)
@@ -67,6 +80,8 @@ namespace OpenRA.Mods.Common.Traits
 		protected override void Created(Actor self)
 		{
 			transforms = self.TraitsImplementing<Transforms>().ToArray();
+			locomotor = self.World.WorldActor.TraitsImplementing<Locomotor>()
+				.Single(l => l.Info.Name == Info.Locomotor);
 			base.Created(self);
 		}
 
@@ -80,7 +95,7 @@ namespace OpenRA.Mods.Common.Traits
 		}
 
 		// Note: Returns a valid order even if the unit can't move to the target
-		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order is MoveOrderTargeter)
 				return new Order("Move", self, target, queued);
@@ -104,17 +119,28 @@ namespace OpenRA.Mods.Common.Traits
 				if (transform == null && currentTransform == null)
 					return;
 
-				self.SetTargetLine(Target.FromCell(self.World, cell), Color.Green);
+				// Manually manage the inner activity queue
+				var activity = currentTransform ?? transform.GetTransformActivity();
+				if (!order.Queued)
+					activity.NextActivity?.Cancel(self);
 
-				var activity = currentTransform ?? transform.GetTransformActivity(self);
-				activity.Queue(self, new IssueOrderAfterTransform("Move", order.Target));
+				activity.Queue(new IssueOrderAfterTransform("Move", order.Target, Info.TargetLineColor));
 
 				if (currentTransform == null)
 					self.QueueActivity(order.Queued, activity);
-			}
 
-			if (order.OrderString == "Stop")
+				self.ShowTargetLines();
+			}
+			else if (order.OrderString == "Stop")
+			{
+				// We don't want Stop orders from traits other than Mobile or Aircraft to cancel Resupply activity.
+				// Resupply is always either the main activity or a child of ReturnToBase.
+				// TODO: This should generally only cancel activities queued by this trait.
+				if (self.CurrentActivity == null || self.CurrentActivity is Resupply || self.CurrentActivity is ReturnToBase)
+					return;
+
 				self.CancelActivity();
+			}
 		}
 
 		string IOrderVoice.VoicePhraseForOrder(Actor self, Order order)
@@ -144,8 +170,12 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			readonly TransformsIntoMobile mobile;
 			readonly bool rejectMove;
-			public bool TargetOverridesSelection(TargetModifiers modifiers)
+			public bool TargetOverridesSelection(Actor self, in Target target, List<Actor> actorsAt, CPos xy, TargetModifiers modifiers)
 			{
+				// Always prioritise orders over selecting other peoples actors or own actors that are already selected
+				if (target.Type == TargetType.Actor && (target.Actor.Owner != self.Owner || self.World.Selection.Contains(target.Actor)))
+					return true;
+
 				return modifiers.HasModifier(TargetModifiers.ForceMove);
 			}
 
@@ -155,11 +185,11 @@ namespace OpenRA.Mods.Common.Traits
 				rejectMove = !self.AcceptsOrder("Move");
 			}
 
-			public string OrderID { get { return "Move"; } }
-			public int OrderPriority { get { return 4; } }
+			public string OrderID => "Move";
+			public int OrderPriority => 4;
 			public bool IsQueued { get; protected set; }
 
-			public bool CanTarget(Actor self, Target target, List<Actor> othersAtTarget, ref TargetModifiers modifiers, ref string cursor)
+			public bool CanTarget(Actor self, in Target target, ref TargetModifiers modifiers, ref string cursor)
 			{
 				if (rejectMove || target.Type != TargetType.Terrain || (mobile.Info.RequiresForceMove && !modifiers.HasModifier(TargetModifiers.ForceMove)))
 					return false;
@@ -168,24 +198,21 @@ namespace OpenRA.Mods.Common.Traits
 				IsQueued = modifiers.HasModifier(TargetModifiers.ForceQueue);
 
 				var explored = self.Owner.Shroud.IsExplored(location);
-				cursor = self.World.Map.Contains(location) ?
-					(self.World.Map.GetTerrainInfo(location).CustomCursor ?? mobile.Info.Cursor) : mobile.Info.BlockedCursor;
-
-				var locomotor = mobile.Info.LocomotorInfo;
-				if (!mobile.transforms.Any(t => !t.IsTraitDisabled && !t.IsTraitPaused)
-					|| (!explored && !locomotor.MoveIntoShroud)
-					|| (explored && !CanEnterCell(self.World, self, location)))
+				if (!self.World.Map.Contains(location) ||
+				    !(self.CurrentActivity is Transform || mobile.transforms.Any(t => !t.IsTraitDisabled && !t.IsTraitPaused))
+				    || (!explored && !mobile.locomotor.Info.MoveIntoShroud)
+				    || (explored && !CanEnterCell(self, location)))
 					cursor = mobile.Info.BlockedCursor;
+				else if (!explored || !mobile.Info.TerrainCursors.TryGetValue(self.World.Map.GetTerrainInfo(location).Type, out cursor))
+					cursor = mobile.Info.Cursor;
 
 				return true;
 			}
 
-			bool CanEnterCell(World world, Actor self, CPos cell)
+			bool CanEnterCell(Actor self, CPos cell)
 			{
-				if (mobile.Info.LocomotorInfo.MovementCostForCell(world, cell) == int.MaxValue)
-					return false;
-
-				return mobile.Info.LocomotorInfo.CanMoveFreelyInto(world, self, cell, null, CellConditions.BlockedByMovers);
+				return mobile.locomotor.MovementCostToEnterCell(
+					self, cell, BlockedByActor.All, null) != PathGraph.MovementCostForUnreachableCell;
 			}
 		}
 	}

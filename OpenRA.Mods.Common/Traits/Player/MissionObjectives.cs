@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -12,6 +12,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using OpenRA.Graphics;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
@@ -34,7 +35,8 @@ namespace OpenRA.Mods.Common.Traits
 		}
 	}
 
-	public class MissionObjectivesInfo : ITraitInfo
+	[TraitLocation(SystemActors.Player)]
+	public class MissionObjectivesInfo : TraitInfo
 	{
 		[Desc("Set this to true if multiple cooperative players have a distinct set of " +
 			"objectives that each of them has to complete to win the game. This is mainly " +
@@ -52,20 +54,30 @@ namespace OpenRA.Mods.Common.Traits
 		[NotificationReference("Speech")]
 		public readonly string WinNotification = null;
 
+		public readonly string WinTextNotification = null;
+
 		[NotificationReference("Speech")]
 		public readonly string LoseNotification = null;
+
+		public readonly string LoseTextNotification = null;
 
 		[NotificationReference("Speech")]
 		public readonly string LeaveNotification = null;
 
-		public object Create(ActorInitializer init) { return new MissionObjectives(init.World, this); }
+		public readonly string LeaveTextNotification = null;
+
+		public override object Create(ActorInitializer init) { return new MissionObjectives(init.Self.Owner, this); }
 	}
 
-	public class MissionObjectives : INotifyWinStateChanged, ISync, IResolveOrder
+	public class MissionObjectives : INotifyWinStateChanged, ISync, IResolveOrder, IWorldLoaded
 	{
 		public readonly MissionObjectivesInfo Info;
 		readonly List<MissionObjective> objectives = new List<MissionObjective>();
-		public ReadOnlyList<MissionObjective> Objectives;
+		readonly Player player;
+		public IReadOnlyList<MissionObjective> Objectives => objectives;
+
+		Player[] enemies;
+		Player[] allies;
 
 		[Sync]
 		public int ObjectivesHash
@@ -83,10 +95,18 @@ namespace OpenRA.Mods.Common.Traits
 		// The player's WinState is only updated when his allies have all completed their objective as well.
 		public WinState WinStateCooperative { get; private set; }
 
-		public MissionObjectives(World world, MissionObjectivesInfo info)
+		public MissionObjectives(Player player, MissionObjectivesInfo info)
 		{
 			Info = info;
-			Objectives = new ReadOnlyList<MissionObjective>(objectives);
+			this.player = player;
+		}
+
+		void IWorldLoaded.WorldLoaded(World w, WorldRenderer wr)
+		{
+			// Players and NonCombatants are fixed once the game starts, but the result of IsAlliedWith
+			// may change once players are marked as spectators, so cache these
+			allies = player.World.Players.Where(p => !p.NonCombatant && player.IsAlliedWith(p)).ToArray();
+			enemies = player.World.Players.Where(p => !p.NonCombatant && player.RelationshipWith(p) == PlayerRelationship.Enemy).ToArray();
 		}
 
 		public int Add(Player player, string description, string type, bool required = true, bool inhibitAnnouncement = false)
@@ -140,10 +160,9 @@ namespace OpenRA.Mods.Common.Traits
 
 		void CheckIfGameIsOver(Player player)
 		{
-			var players = player.World.Players.Where(p => !p.NonCombatant);
-
-			var gameOver = players.All(p => p.WinState != WinState.Undefined || !p.HasObjectives);
+			var gameOver = player.World.Players.All(p => p.NonCombatant || p.WinState != WinState.Undefined || !p.HasObjectives);
 			if (gameOver)
+			{
 				Game.RunAfterDelay(Info.GameOverDelay, () =>
 				{
 					if (!Game.IsCurrentWorld(player.World))
@@ -153,17 +172,14 @@ namespace OpenRA.Mods.Common.Traits
 					player.World.SetPauseState(true);
 					player.World.PauseStateLocked = true;
 				});
+			}
 		}
 
 		void INotifyWinStateChanged.OnPlayerWon(Player player)
 		{
-			var players = player.World.Players.Where(p => !p.NonCombatant);
-			var enemies = players.Where(p => !p.IsAlliedWith(player));
-
 			if (Info.Cooperative)
 			{
 				WinStateCooperative = WinState.Won;
-				var allies = players.Where(p => p.IsAlliedWith(player));
 
 				if (allies.All(p => p.PlayerActor.Trait<MissionObjectives>().WinStateCooperative == WinState.Won))
 				{
@@ -193,13 +209,9 @@ namespace OpenRA.Mods.Common.Traits
 
 		void INotifyWinStateChanged.OnPlayerLost(Player player)
 		{
-			var players = player.World.Players.Where(p => !p.NonCombatant);
-			var enemies = players.Where(p => !p.IsAlliedWith(player));
-
 			if (Info.Cooperative)
 			{
 				WinStateCooperative = WinState.Lost;
-				var allies = players.Where(p => p.IsAlliedWith(player));
 
 				if (allies.Any(p => p.PlayerActor.Trait<MissionObjectives>().WinStateCooperative == WinState.Lost))
 				{
@@ -249,31 +261,30 @@ namespace OpenRA.Mods.Common.Traits
 		public void ResolveOrder(Actor self, Order order)
 		{
 			if (order.OrderString == "Surrender")
-			{
 				ForceDefeat(self.Owner);
-				self.Owner.Spectating = true;
-			}
 		}
 	}
 
+	[TraitLocation(SystemActors.World)]
 	[Desc("Provides game mode progress information for players.",
 		"Goes on WorldActor - observers don't have a player it can live on.",
 		"Current options for PanelName are 'SKIRMISH_STATS' and 'MISSION_OBJECTIVES'.")]
-	public class ObjectivesPanelInfo : ITraitInfo
+	public class ObjectivesPanelInfo : TraitInfo
 	{
-		public string PanelName = null;
+		public readonly string PanelName = null;
 
 		[Desc("in ms")]
-		public int ExitDelay = 1400;
+		public readonly int ExitDelay = 1400;
 
-		public object Create(ActorInitializer init) { return new ObjectivesPanel(this); }
+		public override object Create(ActorInitializer init) { return new ObjectivesPanel(this); }
 	}
 
+	[TraitLocation(SystemActors.World)]
 	public class ObjectivesPanel : IObjectivesPanel
 	{
 		readonly ObjectivesPanelInfo info;
 		public ObjectivesPanel(ObjectivesPanelInfo info) { this.info = info; }
-		public string PanelName { get { return info.PanelName; } }
-		public int ExitDelay { get { return info.ExitDelay; } }
+		public string PanelName => info.PanelName;
+		public int ExitDelay => info.ExitDelay;
 	}
 }

@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -14,7 +14,7 @@ BGAttackGroupSize = 8
 SovietAircraftType = { "yak" }
 Yaks = { }
 SovietInfantry = { "e1", "e2", "e4" }
-SovietVehicles = 
+SovietVehicles =
 {
 	hard = { "3tnk", "3tnk", "v2rl" },
 	normal = { "3tnk" },
@@ -28,8 +28,6 @@ ProductionInterval =
 	hard = DateTime.Seconds(5)
 }
 
-IdleHunt = function(unit) if not unit.IsDead then Trigger.OnIdle(unit, unit.Hunt) end end
-
 ParadropDelay = { DateTime.Seconds(30), DateTime.Minutes(1) }
 ParadropWaves = 6
 ParadropLZs = { ParaLZ1.CenterPosition, ParaLZ2.CenterPosition, ParaLZ3.CenterPosition, ParaLZ4.CenterPosition }
@@ -37,9 +35,11 @@ Paradropped = 0
 
 Paradrop = function()
 	Trigger.AfterDelay(Utils.RandomInteger(ParadropDelay[1], ParadropDelay[2]), function()
-		local units = PowerProxy.SendParatroopers(Utils.Random(ParadropLZs))
-		Utils.Do(units, function(unit)
-			Trigger.OnAddedToWorld(unit, IdleHunt)
+		local aircraft = PowerProxy.TargetParatroopers(Utils.Random(ParadropLZs))
+		Utils.Do(aircraft, function(a)
+			Trigger.OnPassengerExited(a, function(t, p)
+				IdleHunt(p)
+			end)
 		end)
 
 		Paradropped = Paradropped + 1
@@ -71,7 +71,7 @@ ProduceBadGuyInfantry = function()
 	badguy.Build({ Utils.Random(SovietInfantry) }, function(units)
 		table.insert(BGAttackGroup, units[1])
 		SendBGAttackGroup()
-		Trigger.AfterDelay(ProductionInterval[Map.LobbyOption("difficulty")], ProduceBadGuyInfantry)
+		Trigger.AfterDelay(ProductionInterval[Difficulty], ProduceBadGuyInfantry)
 	end)
 end
 
@@ -97,7 +97,7 @@ ProduceUSSRInfantry = function()
 	ussr.Build({ Utils.Random(SovietInfantry) }, function(units)
 		table.insert(AttackGroup, units[1])
 		SendAttackGroup()
-		Trigger.AfterDelay(ProductionInterval[Map.LobbyOption("difficulty")], ProduceUSSRInfantry)
+		Trigger.AfterDelay(ProductionInterval[Difficulty], ProduceUSSRInfantry)
 	end)
 end
 
@@ -109,7 +109,7 @@ ProduceVehicles = function()
 	ussr.Build({ Utils.Random(SovietVehicles) }, function(units)
 		table.insert(AttackGroup, units[1])
 		SendAttackGroup()
-		Trigger.AfterDelay(ProductionInterval[Map.LobbyOption("difficulty")], ProduceVehicles)
+		Trigger.AfterDelay(ProductionInterval[Difficulty], ProduceVehicles)
 	end)
 end
 
@@ -126,35 +126,15 @@ ProduceAircraft = function()
 
 		local alive = Utils.Where(Yaks, function(y) return not y.IsDead end)
 		if #alive < 2 then
-			Trigger.AfterDelay(DateTime.Seconds(ProductionInterval[Map.LobbyOption("difficulty")] / 2), ProduceAircraft)
+			Trigger.AfterDelay(DateTime.Seconds(ProductionInterval[Difficulty] / 2), ProduceAircraft)
 		end
 
-		TargetAndAttack(yak)
-	end)
-end
-
-TargetAndAttack = function(yak, target)
-	if not target or target.IsDead or (not target.IsInWorld) then
-		local enemies = Utils.Where(Map.ActorsInWorld, function(self) return self.Owner == greece and self.HasProperty("Health") and yak.CanTarget(self) end)
-		if #enemies > 0 then
-			target = Utils.Random(enemies)
-		end
-	end
-
-	if target and yak.AmmoCount() > 0 and yak.CanTarget(target) then
-		yak.Attack(target)
-	else
-		yak.ReturnToBase()
-	end
-
-	yak.CallFunc(function()
-		TargetAndAttack(yak, target)
+		InitializeAttackAircraft(yak, greece)
 	end)
 end
 
 ActivateAI = function()
-	local difficulty = Map.LobbyOption("difficulty")
-	SovietVehicles = SovietVehicles[difficulty]
+	SovietVehicles = SovietVehicles[Difficulty]
 
 	local buildings = Utils.Where(Map.ActorsInWorld, function(self) return self.Owner == ussr and self.HasProperty("StartBuildingRepairs") end)
 	Utils.Do(buildings, function(actor)

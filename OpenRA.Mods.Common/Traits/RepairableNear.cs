@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -13,13 +13,12 @@ using System.Collections.Generic;
 using System.Linq;
 using OpenRA.Mods.Common.Activities;
 using OpenRA.Mods.Common.Orders;
-using OpenRA.Primitives;
 using OpenRA.Support;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
-	class RepairableNearInfo : ITraitInfo, Requires<IHealthInfo>, Requires<IMoveInfo>, IObservesVariablesInfo
+	public class RepairableNearInfo : TraitInfo, Requires<IHealthInfo>, Requires<IMoveInfo>, IObservesVariablesInfo
 	{
 		[ActorReference]
 		[FieldLoader.Require]
@@ -34,33 +33,44 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Boolean expression defining the condition under which the regular (non-force) enter cursor is disabled.")]
 		public readonly BooleanExpression RequireForceMoveCondition = null;
 
-		public object Create(ActorInitializer init) { return new RepairableNear(init.Self, this); }
+		[CursorReference]
+		[Desc("Cursor to display when able to be repaired near target actor.")]
+		public readonly string EnterCursor = "enter";
+
+		[CursorReference]
+		[Desc("Cursor to display when unable to be repaired near target actor.")]
+		public readonly string EnterBlockedCursor = "enter-blocked";
+
+		public override object Create(ActorInitializer init) { return new RepairableNear(init.Self, this); }
 	}
 
-	class RepairableNear : IIssueOrder, IResolveOrder, IOrderVoice, IObservesVariables
+	public class RepairableNear : IIssueOrder, IResolveOrder, IOrderVoice, IObservesVariables
 	{
 		public readonly RepairableNearInfo Info;
 		readonly Actor self;
-		readonly IMove movement;
 		bool requireForceMove;
 
 		public RepairableNear(Actor self, RepairableNearInfo info)
 		{
 			this.self = self;
 			Info = info;
-			movement = self.Trait<IMove>();
 		}
 
-		public IEnumerable<IOrderTargeter> Orders
+		IEnumerable<IOrderTargeter> IIssueOrder.Orders
 		{
 			get
 			{
-				yield return new EnterAlliedActorTargeter<BuildingInfo>("RepairNear", 5,
-					CanRepairAt, _ => ShouldRepair());
+				yield return new EnterAlliedActorTargeter<BuildingInfo>(
+					"RepairNear",
+					5,
+					Info.EnterCursor,
+					Info.EnterBlockedCursor,
+					CanRepairAt,
+					_ => ShouldRepair());
 			}
 		}
 
-		public Order IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order.OrderID == "RepairNear")
 				return new Order(order.OrderID, self, target, queued);
@@ -86,12 +96,12 @@ namespace OpenRA.Mods.Common.Traits
 			return self.GetDamageState() > DamageState.Undamaged;
 		}
 
-		public string VoicePhraseForOrder(Actor self, Order order)
+		string IOrderVoice.VoicePhraseForOrder(Actor self, Order order)
 		{
 			return order.OrderString == "RepairNear" && ShouldRepair() ? Info.Voice : null;
 		}
 
-		public void ResolveOrder(Actor self, Order order)
+		void IResolveOrder.ResolveOrder(Actor self, Order order)
 		{
 			// RepairNear orders are only valid for own/allied actors,
 			// which are guaranteed to never be frozen.
@@ -101,13 +111,8 @@ namespace OpenRA.Mods.Common.Traits
 			if (!CanRepairAt(order.Target.Actor) || !ShouldRepair())
 				return;
 
-			if (!order.Queued)
-				self.CancelActivity();
-
-			self.QueueActivity(movement.MoveWithinRange(order.Target, Info.CloseEnough, targetLineColor: Color.Green));
-			self.QueueActivity(new Resupply(self, order.Target.Actor, Info.CloseEnough));
-
-			self.SetTargetLine(order.Target, Color.Green, false);
+			self.QueueActivity(order.Queued, new Resupply(self, order.Target.Actor, Info.CloseEnough));
+			self.ShowTargetLines();
 		}
 
 		public Actor FindRepairBuilding(Actor self)

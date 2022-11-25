@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -13,7 +13,7 @@ using System;
 
 namespace OpenRA.Primitives
 {
-	public struct Rectangle
+	public struct Rectangle : IEquatable<Rectangle>
 	{
 		// TODO: Make these readonly: this will require a lot of changes to the UI logic
 		public int X;
@@ -34,7 +34,7 @@ namespace OpenRA.Primitives
 
 		public static bool operator ==(Rectangle left, Rectangle right)
 		{
-			return left.Location == right.Location && left.Size == right.Size;
+			return left.X == right.X && left.Y == right.Y && left.Width == right.Width && left.Height == right.Height;
 		}
 
 		public static bool operator !=(Rectangle left, Rectangle right)
@@ -58,13 +58,18 @@ namespace OpenRA.Primitives
 			Height = size.Height;
 		}
 
-		public int Left { get { return X; } }
-		public int Right { get { return X + Width; } }
-		public int Top { get { return Y; } }
-		public int Bottom { get { return Y + Height; } }
-		public bool IsEmpty { get { return X == 0 && Y == 0 && Width == 0 && Height == 0; } }
-		public int2 Location { get { return new int2(X, Y); } }
-		public Size Size { get { return new Size(Width, Height); } }
+		public int Left => X;
+		public int Right => X + Width;
+		public int Top => Y;
+		public int Bottom => Y + Height;
+		public bool IsEmpty => X == 0 && Y == 0 && Width == 0 && Height == 0;
+		public int2 Location => new int2(X, Y);
+		public Size Size => new Size(Width, Height);
+
+		public int2 TopLeft => Location;
+		public int2 TopRight => new int2(X + Width, Y);
+		public int2 BottomLeft => new int2(X, Y + Height);
+		public int2 BottomRight => new int2(X + Width, Y + Height);
 
 		public bool Contains(int x, int y)
 		{
@@ -74,6 +79,11 @@ namespace OpenRA.Primitives
 		public bool Contains(int2 pt)
 		{
 			return Contains(pt.X, pt.Y);
+		}
+
+		public bool Equals(Rectangle other)
+		{
+			return this == other;
 		}
 
 		public override bool Equals(object obj)
@@ -112,9 +122,11 @@ namespace OpenRA.Primitives
 			return rect == Intersect(this, rect);
 		}
 
+		public static Rectangle operator *(int a, Rectangle b) { return new Rectangle(a * b.X, a * b.Y, a * b.Width, a * b.Height); }
+
 		public override string ToString()
 		{
-			return string.Format("{{X={0},Y={1},Width={2},Height={3}}}", X, Y, Width, Height);
+			return $"{X},{Y},{Width},{Height}";
 		}
 	}
 }

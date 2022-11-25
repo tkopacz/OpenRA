@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -83,14 +83,20 @@ namespace OpenRA.Mods.Common.Widgets
 
 		public string Button = "button";
 		public string Background = "panel-black";
+		public readonly string Decorations = "scrollpanel-decorations";
+		public readonly string DecorationScrollLeft = "left";
+		public readonly string DecorationScrollRight = "right";
+		readonly CachedTransform<(bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted), Sprite> getLeftArrowImage;
+		readonly CachedTransform<(bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted), Sprite> getRightArrowImage;
 
 		int contentWidth = 0;
 		float listOffset = 0;
 		bool leftPressed = false;
 		bool rightPressed = false;
+		SpriteFont font;
 		Rectangle leftButtonRect;
 		Rectangle rightButtonRect;
-		Lazy<ProductionPaletteWidget> paletteWidget;
+		readonly Lazy<ProductionPaletteWidget> paletteWidget;
 		string queueGroup;
 
 		[ObjectCreator.UseCtor]
@@ -105,6 +111,19 @@ namespace OpenRA.Mods.Common.Widgets
 			IsVisible = () => queueGroup != null && Groups[queueGroup].Tabs.Count > 0;
 
 			paletteWidget = Exts.Lazy(() => Ui.Root.Get<ProductionPaletteWidget>(PaletteWidget));
+
+			getLeftArrowImage = WidgetUtils.GetCachedStatefulImage(Decorations, DecorationScrollLeft);
+			getRightArrowImage = WidgetUtils.GetCachedStatefulImage(Decorations, DecorationScrollRight);
+		}
+
+		public override void Initialize(WidgetArgs args)
+		{
+			base.Initialize(args);
+
+			var rb = RenderBounds;
+			leftButtonRect = new Rectangle(rb.X, rb.Y, ArrowWidth, rb.Height);
+			rightButtonRect = new Rectangle(rb.Right - ArrowWidth, rb.Y, ArrowWidth, rb.Height);
+			font = Game.Renderer.Fonts["TinyBold"];
 		}
 
 		public bool SelectNextTab(bool reverse)
@@ -133,10 +152,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 		public string QueueGroup
 		{
-			get
-			{
-				return queueGroup;
-			}
+			get => queueGroup;
 
 			set
 			{
@@ -148,10 +164,7 @@ namespace OpenRA.Mods.Common.Widgets
 
 		public ProductionQueue CurrentQueue
 		{
-			get
-			{
-				return paletteWidget.Value.CurrentQueue;
-			}
+			get => paletteWidget.Value.CurrentQueue;
 
 			set
 			{
@@ -170,8 +183,6 @@ namespace OpenRA.Mods.Common.Widgets
 				return;
 
 			var rb = RenderBounds;
-			leftButtonRect = new Rectangle(rb.X, rb.Y, ArrowWidth, rb.Height);
-			rightButtonRect = new Rectangle(rb.Right - ArrowWidth, rb.Y, ArrowWidth, rb.Height);
 
 			var leftDisabled = listOffset >= 0;
 			var leftHover = Ui.MouseOverWidget == this && leftButtonRect.Contains(Viewport.LastMousePos);
@@ -182,15 +193,17 @@ namespace OpenRA.Mods.Common.Widgets
 			ButtonWidget.DrawBackground(Button, leftButtonRect, leftDisabled, leftPressed, leftHover, false);
 			ButtonWidget.DrawBackground(Button, rightButtonRect, rightDisabled, rightPressed, rightHover, false);
 
-			WidgetUtils.DrawRGBA(ChromeProvider.GetImage("scrollbar", leftPressed || leftDisabled ? "left_pressed" : "left_arrow"),
+			var leftArrowImage = getLeftArrowImage.Update((leftDisabled, leftPressed, leftHover, false, false));
+			WidgetUtils.DrawSprite(leftArrowImage,
 				new float2(leftButtonRect.Left + 2, leftButtonRect.Top + 2));
-			WidgetUtils.DrawRGBA(ChromeProvider.GetImage("scrollbar", rightPressed || rightDisabled ? "right_pressed" : "right_arrow"),
+
+			var rightArrowImage = getRightArrowImage.Update((rightDisabled, rightPressed, rightHover, false, false));
+			WidgetUtils.DrawSprite(rightArrowImage,
 				new float2(rightButtonRect.Left + 2, rightButtonRect.Top + 2));
 
 			// Draw tab buttons
 			Game.Renderer.EnableScissor(new Rectangle(leftButtonRect.Right, rb.Y + 1, rightButtonRect.Left - leftButtonRect.Right - 1, rb.Height));
 			var origin = new int2(leftButtonRect.Right - 1 + (int)listOffset, leftButtonRect.Y);
-			var font = Game.Renderer.Fonts["TinyBold"];
 			contentWidth = 0;
 
 			foreach (var tab in tabs)
@@ -257,7 +270,7 @@ namespace OpenRA.Mods.Common.Widgets
 		{
 			if (mi.Event == MouseInputEvent.Scroll)
 			{
-				Scroll(mi.ScrollDelta);
+				Scroll(mi.Delta.Y);
 				return true;
 			}
 

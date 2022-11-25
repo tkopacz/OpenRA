@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -19,7 +19,7 @@ namespace OpenRA.Mods.Common.Traits
 	public class SupportPowerBotModuleInfo : ConditionalTraitInfo, Requires<SupportPowerManagerInfo>
 	{
 		[Desc("Tells the AI how to use its support powers.")]
-		[FieldLoader.LoadUsing("LoadDecisions")]
+		[FieldLoader.LoadUsing(nameof(LoadDecisions))]
 		public readonly List<SupportPowerDecision> Decisions = new List<SupportPowerDecision>();
 
 		static object LoadDecisions(MiniYaml yaml)
@@ -40,9 +40,10 @@ namespace OpenRA.Mods.Common.Traits
 	{
 		readonly World world;
 		readonly Player player;
+		readonly Dictionary<SupportPowerInstance, int> waitingPowers = new Dictionary<SupportPowerInstance, int>();
+		readonly Dictionary<string, SupportPowerDecision> powerDecisions = new Dictionary<string, SupportPowerDecision>();
+		readonly List<SupportPowerInstance> stalePowers = new List<SupportPowerInstance>();
 		SupportPowerManager supportPowerManager;
-		Dictionary<SupportPowerInstance, int> waitingPowers = new Dictionary<SupportPowerInstance, int>();
-		Dictionary<string, SupportPowerDecision> powerDecisions = new Dictionary<string, SupportPowerDecision>();
 
 		public SupportPowerBotModule(Actor self, SupportPowerBotModuleInfo info)
 			: base(info)
@@ -51,9 +52,13 @@ namespace OpenRA.Mods.Common.Traits
 			player = self.Owner;
 		}
 
+		protected override void Created(Actor self)
+		{
+			supportPowerManager = self.Owner.PlayerActor.Trait<SupportPowerManager>();
+		}
+
 		protected override void TraitEnabled(Actor self)
 		{
-			supportPowerManager = player.PlayerActor.Trait<SupportPowerManager>();
 			foreach (var decision in Info.Decisions)
 				powerDecisions.Add(decision.OrderName, decision);
 		}
@@ -79,14 +84,14 @@ namespace OpenRA.Mods.Common.Traits
 					var powerDecision = powerDecisions[sp.Info.OrderName];
 					if (powerDecision == null)
 					{
-						AIUtils.BotDebug("Bot Bug: FindAttackLocationToSupportPower, couldn't find powerDecision for {0}", sp.Info.OrderName);
+						AIUtils.BotDebug("{0} couldn't find powerDecision for {1}", player.PlayerName, sp.Info.OrderName);
 						continue;
 					}
 
 					var attackLocation = FindCoarseAttackLocationToSupportPower(sp);
 					if (attackLocation == null)
 					{
-						AIUtils.BotDebug("AI: {1} can't find suitable coarse attack location for support power {0}. Delaying rescan.", sp.Info.OrderName, player.PlayerName);
+						AIUtils.BotDebug("{0} can't find suitable coarse attack location for support power {1}. Delaying rescan.", player.PlayerName, sp.Info.OrderName);
 						waitingPowers[sp] += powerDecision.GetNextScanTime(world);
 
 						continue;
@@ -96,34 +101,44 @@ namespace OpenRA.Mods.Common.Traits
 					attackLocation = FindFineAttackLocationToSupportPower(sp, (CPos)attackLocation);
 					if (attackLocation == null)
 					{
-						AIUtils.BotDebug("AI: {1} can't find suitable final attack location for support power {0}. Delaying rescan.", sp.Info.OrderName, player.PlayerName);
+						AIUtils.BotDebug("{0} can't find suitable final attack location for support power {1}. Delaying rescan.", player.PlayerName, sp.Info.OrderName);
 						waitingPowers[sp] += powerDecision.GetNextScanTime(world);
 
 						continue;
 					}
 
 					// Valid target found, delay by a few ticks to avoid rescanning before power fires via order
-					AIUtils.BotDebug("AI: {2} found new target location {0} for support power {1}.", attackLocation, sp.Info.OrderName, player.PlayerName);
+					AIUtils.BotDebug("{0} found new target location {1} for support power {2}.", player.PlayerName, attackLocation, sp.Info.OrderName);
 					waitingPowers[sp] += 10;
-					bot.QueueOrder(new Order(sp.Key, supportPowerManager.Self, Target.FromCell(world, attackLocation.Value), false) { SuppressVisualFeedback = true });
+
+					// Note: SelectDirectionalTarget uses uint.MaxValue in ExtraData to indicate that the player did not pick a direction.
+					bot.QueueOrder(new Order(sp.Key, supportPowerManager.Self, Target.FromCell(world, attackLocation.Value), false) { SuppressVisualFeedback = true, ExtraData = uint.MaxValue });
 				}
 			}
+
+			// Remove stale powers
+			stalePowers.AddRange(waitingPowers.Keys.Where(wp => !supportPowerManager.Powers.ContainsKey(wp.Key)));
+			foreach (var p in stalePowers)
+				waitingPowers.Remove(p);
+
+			stalePowers.Clear();
 		}
 
 		/// <summary>Scans the map in chunks, evaluating all actors in each.</summary>
 		CPos? FindCoarseAttackLocationToSupportPower(SupportPowerInstance readyPower)
 		{
-			CPos? bestLocation = null;
-			var bestAttractiveness = 0;
 			var powerDecision = powerDecisions[readyPower.Info.OrderName];
 			if (powerDecision == null)
 			{
-				AIUtils.BotDebug("Bot Bug: FindAttackLocationToSupportPower, couldn't find powerDecision for {0}", readyPower.Info.OrderName);
+				AIUtils.BotDebug("{0} couldn't find powerDecision for {1}", player.PlayerName, readyPower.Info.OrderName);
 				return null;
 			}
 
 			var map = world.Map;
 			var checkRadius = powerDecision.CoarseScanRadius;
+			var suitableLocations = new List<(MPos UV, int Attractiveness)>();
+			var totalAttractiveness = 0;
+
 			for (var i = 0; i < map.MapSize.X; i += checkRadius)
 			{
 				for (var j = 0; j < map.MapSize.Y; j += checkRadius)
@@ -139,15 +154,22 @@ namespace OpenRA.Mods.Common.Traits
 
 					var frozenTargets = player.FrozenActorLayer != null ? player.FrozenActorLayer.FrozenActorsInRegion(region) : Enumerable.Empty<FrozenActor>();
 					var consideredAttractiveness = powerDecision.GetAttractiveness(targets, player) + powerDecision.GetAttractiveness(frozenTargets, player);
-					if (consideredAttractiveness <= bestAttractiveness || consideredAttractiveness < powerDecision.MinimumAttractiveness)
+					if (consideredAttractiveness < powerDecision.MinimumAttractiveness)
 						continue;
 
-					bestAttractiveness = consideredAttractiveness;
-					bestLocation = new MPos(i, j).ToCPos(map);
+					suitableLocations.Add((tl, consideredAttractiveness));
+					totalAttractiveness += consideredAttractiveness;
 				}
 			}
 
-			return bestLocation;
+			if (suitableLocations.Count == 0)
+				return null;
+
+			// Pick a random location with above average attractiveness.
+			var averageAttractiveness = totalAttractiveness / suitableLocations.Count;
+			return suitableLocations.Shuffle(world.LocalRandom)
+				.First(x => x.Attractiveness >= averageAttractiveness)
+				.UV.ToCPos(map);
 		}
 
 		/// <summary>Detail scans an area, evaluating positions.</summary>
@@ -158,7 +180,7 @@ namespace OpenRA.Mods.Common.Traits
 			var powerDecision = powerDecisions[readyPower.Info.OrderName];
 			if (powerDecision == null)
 			{
-				AIUtils.BotDebug("Bot Bug: FindAttackLocationToSupportPower, couldn't find powerDecision for {0}", readyPower.Info.OrderName);
+				AIUtils.BotDebug("{0} couldn't find powerDecision for {1}", player.PlayerName, readyPower.Info.OrderName);
 				return null;
 			}
 
@@ -208,8 +230,13 @@ namespace OpenRA.Mods.Common.Traits
 
 			var waitingPowersNode = data.FirstOrDefault(n => n.Key == "WaitingPowers");
 			if (waitingPowersNode != null)
+			{
 				foreach (var n in waitingPowersNode.Value.Nodes)
-					waitingPowers[supportPowerManager.Powers[n.Key]] = FieldLoader.GetValue<int>("WaitingPowers", n.Value.Value);
+				{
+					if (supportPowerManager.Powers.TryGetValue(n.Key, out var instance))
+						waitingPowers[instance] = FieldLoader.GetValue<int>("WaitingPowers", n.Value.Value);
+				}
+			}
 		}
 	}
 }

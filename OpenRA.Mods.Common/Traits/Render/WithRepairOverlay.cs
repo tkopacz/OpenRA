@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -18,7 +18,7 @@ namespace OpenRA.Mods.Common.Traits.Render
 	[Desc("Displays an overlay when the building is being repaired by the player.")]
 	public class WithRepairOverlayInfo : PausableConditionalTraitInfo, Requires<RenderSpritesInfo>, Requires<BodyOrientationInfo>
 	{
-		[SequenceReference("Image")]
+		[SequenceReference]
 		[Desc("Sequence to use upon repair beginning.")]
 		public readonly string StartSequence = null;
 
@@ -26,14 +26,14 @@ namespace OpenRA.Mods.Common.Traits.Render
 		[Desc("Sequence name to play once during repair intervals or repeatedly if a start sequence is set.")]
 		public readonly string Sequence = "active";
 
-		[SequenceReference("Image")]
+		[SequenceReference]
 		[Desc("Sequence to use after repairing has finished.")]
 		public readonly string EndSequence = null;
 
 		[Desc("Position relative to body")]
 		public readonly WVec Offset = WVec.Zero;
 
-		[PaletteReference("IsPlayerPalette")]
+		[PaletteReference(nameof(IsPlayerPalette))]
 		[Desc("Custom palette name")]
 		public readonly string Palette = null;
 
@@ -59,7 +59,7 @@ namespace OpenRA.Mods.Common.Traits.Render
 			overlay.PlayThen(info.Sequence, () => visible = false);
 
 			var anim = new AnimationWithOffset(overlay,
-				() => body.LocalToWorld(info.Offset.Rotate(body.QuantizeOrientation(self, self.Orientation))),
+				() => body.LocalToWorld(info.Offset.Rotate(body.QuantizeOrientation(self.Orientation))),
 				() => IsTraitDisabled || !visible,
 				p => RenderUtils.ZOffsetFromCenter(self, p, 1));
 

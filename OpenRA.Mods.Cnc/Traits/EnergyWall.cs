@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -36,11 +36,9 @@ namespace OpenRA.Mods.Cnc.Traits
 
 		public void RulesetLoaded(Ruleset rules, ActorInfo ai)
 		{
-			WeaponInfo weaponInfo;
-
 			var weaponToLower = Weapon.ToLowerInvariant();
-			if (!rules.Weapons.TryGetValue(weaponToLower, out weaponInfo))
-				throw new YamlException("Weapons Ruleset does not contain an entry '{0}'".F(weaponToLower));
+			if (!rules.Weapons.TryGetValue(weaponToLower, out var weaponInfo))
+				throw new YamlException($"Weapons Ruleset does not contain an entry '{weaponToLower}'");
 
 			WeaponInfo = weaponInfo;
 		}
@@ -90,7 +88,7 @@ namespace OpenRA.Mods.Cnc.Traits
 			{
 				var blockers = self.World.ActorMap.GetActorsAt(loc).Where(a => !a.IsDead && a != self);
 				foreach (var blocker in blockers)
-					info.WeaponInfo.Impact(Target.FromActor(blocker), self, Enumerable.Empty<int>());
+					info.WeaponInfo.Impact(Target.FromActor(blocker), self);
 			}
 		}
 

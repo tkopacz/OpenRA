@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -23,7 +23,7 @@ namespace OpenRA.Mods.Cnc.UtilityCommands
 			return args.Length >= 2;
 		}
 
-		string IUtilityCommand.Name { get { return "--sequence-import"; } }
+		string IUtilityCommand.Name => "--sequence-import";
 
 		IniFile file;
 		MapGrid grid;
@@ -265,9 +265,8 @@ namespace OpenRA.Mods.Cnc.UtilityCommands
 				else
 					Console.WriteLine("\t\tFacings: 8");
 
-				int length, stride;
-				int.TryParse(splitting[2], out stride);
-				int.TryParse(splitting[1], out length);
+				int.TryParse(splitting[2], out var stride);
+				int.TryParse(splitting[1], out var length);
 				if (stride != 0 && stride != length)
 					Console.WriteLine("\t\tStride: " + stride);
 			}

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,10 +10,8 @@
 #endregion
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using OpenRA.Support;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
@@ -57,13 +55,11 @@ namespace OpenRA.Mods.Common.Traits
 				Info.ConstructionYardTypes.Contains(a.Info.Name))
 				.RandomOrDefault(world.LocalRandom);
 
-			return randomConstructionYard != null ? randomConstructionYard.Location : initialBaseCenter;
+			return randomConstructionYard?.Location ?? initialBaseCenter;
 		}
 
 		readonly World world;
 		readonly Player player;
-
-		readonly Predicate<Actor> unitCannotBeOrdered;
 
 		IBotPositionsUpdated[] notifyPositionsUpdated;
 		IBotRequestUnitProduction[] requestUnitProduction;
@@ -72,22 +68,21 @@ namespace OpenRA.Mods.Common.Traits
 		int scanInterval;
 		bool firstTick = true;
 
-		// MCVs that the bot already knows about. Any MCV not on this list needs to be given an order.
-		List<Actor> activeMCVs = new List<Actor>();
-
 		public McvManagerBotModule(Actor self, McvManagerBotModuleInfo info)
 			: base(info)
 		{
 			world = self.World;
 			player = self.Owner;
-			unitCannotBeOrdered = a => a.Owner != player || a.IsDead || !a.IsInWorld;
+		}
+
+		protected override void Created(Actor self)
+		{
+			notifyPositionsUpdated = self.Owner.PlayerActor.TraitsImplementing<IBotPositionsUpdated>().ToArray();
+			requestUnitProduction = self.Owner.PlayerActor.TraitsImplementing<IBotRequestUnitProduction>().ToArray();
 		}
 
 		protected override void TraitEnabled(Actor self)
 		{
-			notifyPositionsUpdated = player.PlayerActor.TraitsImplementing<IBotPositionsUpdated>().ToArray();
-			requestUnitProduction = player.PlayerActor.TraitsImplementing<IBotRequestUnitProduction>().ToArray();
-
 			// Avoid all AIs reevaluating assignments on the same tick, randomize their initial evaluation delay.
 			scanInterval = world.LocalRandom.Next(Info.ScanForNewMcvInterval, Info.ScanForNewMcvInterval * 2);
 		}
@@ -115,7 +110,7 @@ namespace OpenRA.Mods.Common.Traits
 				// No construction yards - Build a new MCV
 				if (ShouldBuildMCV())
 				{
-					var unitBuilder = requestUnitProduction.FirstOrDefault(Exts.IsTraitEnabled);
+					var unitBuilder = requestUnitProduction.FirstEnabledTraitOrDefault();
 					if (unitBuilder != null)
 					{
 						var mcvInfo = AIUtils.GetInfoByCommonName(Info.McvTypes, player);
@@ -140,18 +135,10 @@ namespace OpenRA.Mods.Common.Traits
 
 		void DeployMcvs(IBot bot, bool chooseLocation)
 		{
-			activeMCVs.RemoveAll(unitCannotBeOrdered);
-
 			var newMCVs = world.ActorsHavingTrait<Transforms>()
-				.Where(a => a.Owner == player &&
-					a.IsIdle &&
-					Info.McvTypes.Contains(a.Info.Name) &&
-					!activeMCVs.Contains(a));
+				.Where(a => a.Owner == player && a.IsIdle && Info.McvTypes.Contains(a.Info.Name));
 
-			foreach (var a in newMCVs)
-				activeMCVs.Add(a);
-
-			foreach (var mcv in activeMCVs)
+			foreach (var mcv in newMCVs)
 				DeployMcv(bot, mcv, chooseLocation);
 		}
 
@@ -173,7 +160,7 @@ namespace OpenRA.Mods.Common.Traits
 
 			// If the MCV has to move first, we can't be sure it reaches the destination alive, so we only
 			// update base and defense center if the MCV is deployed immediately (i.e. at game start).
-			// TODO: This could be adressed via INotifyTransform.
+			// TODO: This could be addressed via INotifyTransform.
 			foreach (var n in notifyPositionsUpdated)
 			{
 				n.UpdatedBaseCenter(mcv.Location);
@@ -202,15 +189,8 @@ namespace OpenRA.Mods.Common.Traits
 					cells = cells.Shuffle(world.LocalRandom);
 
 				foreach (var cell in cells)
-				{
-					if (!world.CanPlaceBuilding(cell + offset, actorInfo, bi, null))
-						continue;
-
-					if (distanceToBaseIsImportant && !bi.IsCloseEnoughToBase(world, player, actorInfo, cell))
-						continue;
-
-					return cell;
-				}
+					if (world.CanPlaceBuilding(cell + offset, actorInfo, bi, null))
+						return cell;
 
 				return null;
 			};
@@ -228,8 +208,7 @@ namespace OpenRA.Mods.Common.Traits
 
 			return new List<MiniYamlNode>()
 			{
-				new MiniYamlNode("InitialBaseCenter", FieldSaver.FormatValue(initialBaseCenter)),
-				new MiniYamlNode("ActiveMCVs", FieldSaver.FormatValue(activeMCVs.Select(a => a.ActorID).ToArray()))
+				new MiniYamlNode("InitialBaseCenter", FieldSaver.FormatValue(initialBaseCenter))
 			};
 		}
 
@@ -241,14 +220,6 @@ namespace OpenRA.Mods.Common.Traits
 			var initialBaseCenterNode = data.FirstOrDefault(n => n.Key == "InitialBaseCenter");
 			if (initialBaseCenterNode != null)
 				initialBaseCenter = FieldLoader.GetValue<CPos>("InitialBaseCenter", initialBaseCenterNode.Value.Value);
-
-			var activeMCVsNode = data.FirstOrDefault(n => n.Key == "ActiveMCVs");
-			if (activeMCVsNode != null)
-			{
-				activeMCVs.Clear();
-				activeMCVs.AddRange(FieldLoader.GetValue<uint[]>("ActiveMCVs", activeMCVsNode.Value.Value)
-					.Select(a => world.GetActorById(a)));
-			}
 		}
 	}
 }

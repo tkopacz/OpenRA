@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,10 +9,8 @@
  */
 #endregion
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using OpenRA.Activities;
 using OpenRA.Mods.Common.Activities;
 using OpenRA.Mods.Common.Orders;
 using OpenRA.Primitives;
@@ -29,18 +27,33 @@ namespace OpenRA.Mods.Common.Traits
 		[VoiceReference]
 		public readonly string Voice = "Action";
 
+		[Desc("Color to use for the target line.")]
+		public readonly Color TargetLineColor = Color.Green;
+
 		[Desc("Require the force-move modifier to display the enter cursor.")]
 		public readonly bool RequiresForceMove = false;
 
-		public override object Create(ActorInitializer init) { return new TransformsIntoPassenger(this); }
+		[CursorReference]
+		[Desc("Cursor to display when able to enter target actor.")]
+		public readonly string EnterCursor = "enter";
+
+		[CursorReference]
+		[Desc("Cursor to display when unable to enter target actor.")]
+		public readonly string EnterBlockedCursor = "enter-blocked";
+
+		public override object Create(ActorInitializer init) { return new TransformsIntoPassenger(init.Self, this); }
 	}
 
 	public class TransformsIntoPassenger : ConditionalTrait<TransformsIntoPassengerInfo>, IIssueOrder, IResolveOrder, IOrderVoice
 	{
+		readonly Actor self;
 		Transforms[] transforms;
 
-		public TransformsIntoPassenger(TransformsIntoPassengerInfo info)
-			: base(info) { }
+		public TransformsIntoPassenger(Actor self, TransformsIntoPassengerInfo info)
+			: base(info)
+		{
+			this.self = self;
+		}
 
 		protected override void Created(Actor self)
 		{
@@ -53,11 +66,17 @@ namespace OpenRA.Mods.Common.Traits
 			get
 			{
 				if (!IsTraitDisabled)
-					yield return new EnterAlliedActorTargeter<CargoInfo>("EnterTransport", 5, IsCorrectCargoType, CanEnter);
+					yield return new EnterAlliedActorTargeter<CargoInfo>(
+						"EnterTransport",
+						5,
+						Info.EnterCursor,
+						Info.EnterBlockedCursor,
+						IsCorrectCargoType,
+						CanEnter);
 			}
 		}
 
-		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order.OrderID == "EnterTransport")
 				return new Order(order.OrderID, self, target, queued);
@@ -81,7 +100,7 @@ namespace OpenRA.Mods.Common.Traits
 
 		bool CanEnter(Actor target)
 		{
-			if (!transforms.Any(t => !t.IsTraitDisabled && !t.IsTraitPaused))
+			if (!(self.CurrentActivity is Transform || transforms.Any(t => !t.IsTraitDisabled && !t.IsTraitPaused)))
 				return false;
 
 			var cargo = target.TraitOrDefault<Cargo>();
@@ -113,13 +132,17 @@ namespace OpenRA.Mods.Common.Traits
 			if (transform == null && currentTransform == null)
 				return;
 
-			self.SetTargetLine(order.Target, Color.Green);
+			// Manually manage the inner activity queue
+			var activity = currentTransform ?? transform.GetTransformActivity();
+			if (!order.Queued)
+				activity.NextActivity?.Cancel(self);
 
-			var activity = currentTransform ?? transform.GetTransformActivity(self);
-			activity.Queue(self, new IssueOrderAfterTransform(order.OrderString, order.Target));
+			activity.Queue(new IssueOrderAfterTransform(order.OrderString, order.Target, Info.TargetLineColor));
 
 			if (currentTransform == null)
 				self.QueueActivity(order.Queued, activity);
+
+			self.ShowTargetLines();
 		}
 
 		string IOrderVoice.VoicePhraseForOrder(Actor self, Order order)

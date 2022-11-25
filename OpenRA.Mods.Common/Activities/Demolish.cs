@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -23,21 +23,23 @@ namespace OpenRA.Mods.Common.Activities
 		readonly int flashes;
 		readonly int flashesDelay;
 		readonly int flashInterval;
+		readonly BitSet<DamageType> damageTypes;
 		readonly INotifyDemolition[] notifiers;
 		readonly EnterBehaviour enterBehaviour;
 
 		Actor enterActor;
 		IDemolishable[] enterDemolishables;
 
-		public Demolish(Actor self, Target target, EnterBehaviour enterBehaviour, int delay,
-			int flashes, int flashesDelay, int flashInterval)
-			: base(self, target, Color.Red)
+		public Demolish(Actor self, in Target target, EnterBehaviour enterBehaviour, int delay, int flashes,
+			int flashesDelay, int flashInterval, BitSet<DamageType> damageTypes, Color? targetLineColor)
+			: base(self, target, targetLineColor)
 		{
 			notifiers = self.TraitsImplementing<INotifyDemolition>().ToArray();
 			this.delay = delay;
 			this.flashes = flashes;
 			this.flashesDelay = flashesDelay;
 			this.flashInterval = flashInterval;
+			this.damageTypes = damageTypes;
 			this.enterBehaviour = enterBehaviour;
 		}
 
@@ -69,13 +71,13 @@ namespace OpenRA.Mods.Common.Activities
 				if (!enterDemolishables.Any(i => i.IsValidTarget(enterActor, self)))
 					return;
 
-				w.Add(new FlashTarget(enterActor, count: flashes, delay: flashesDelay, interval: flashInterval));
+				w.Add(new FlashTarget(enterActor, Color.White, count: flashes, interval: flashInterval, delay: flashesDelay));
 
 				foreach (var ind in notifiers)
 					ind.Demolishing(self);
 
 				foreach (var d in enterDemolishables)
-					d.Demolish(enterActor, self, delay);
+					d.Demolish(enterActor, self, delay, damageTypes);
 
 				if (enterBehaviour == EnterBehaviour.Dispose)
 					self.Dispose();

@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using OpenRA.Graphics;
 using OpenRA.Primitives;
 using OpenRA.Widgets;
@@ -19,15 +20,18 @@ namespace OpenRA.Mods.Common.Widgets
 {
 	public class DropDownButtonWidget : ButtonWidget
 	{
-		public readonly string SeparatorCollection = "dropdown";
+		public readonly string Decorations = "dropdown-decorations";
+		public readonly string DecorationMarker = "marker";
+		public readonly string Separators = "dropdown-separators";
 		public readonly string SeparatorImage = "separator";
+		public readonly TextAlign PanelAlign = TextAlign.Left;
+		public string PanelRoot;
 
 		Widget panel;
 		MaskWidget fullscreenMask;
 		Widget panelRoot;
-
-		public string PanelRoot;
-		public string SelectedItem;
+		CachedTransform<(bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted), Sprite> getMarkerImage;
+		CachedTransform<(bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted), Sprite> getSeparatorImage;
 
 		[ObjectCreator.UseCtor]
 		public DropDownButtonWidget(ModData modData)
@@ -37,6 +41,10 @@ namespace OpenRA.Mods.Common.Widgets
 			: base(widget)
 		{
 			PanelRoot = widget.PanelRoot;
+			Decorations = widget.Decorations;
+			DecorationMarker = widget.DecorationMarker;
+			Separators = widget.Separators;
+			SeparatorImage = widget.SeparatorImage;
 		}
 
 		public override void Draw()
@@ -44,19 +52,28 @@ namespace OpenRA.Mods.Common.Widgets
 			base.Draw();
 			var stateOffset = Depressed ? new int2(VisualHeight, VisualHeight) : new int2(0, 0);
 
-			var image = ChromeProvider.GetImage("scrollbar", IsDisabled() ? "down_pressed" : "down_arrow");
 			var rb = RenderBounds;
+			var isDisabled = IsDisabled();
+			var isHover = Ui.MouseOverWidget == this || Children.Any(c => c == Ui.MouseOverWidget);
 
-			WidgetUtils.DrawRGBA(image, stateOffset + new float2(rb.Right - rb.Height + 4, rb.Top + (rb.Height - image.Bounds.Height) / 2));
+			if (getMarkerImage == null)
+				getMarkerImage = WidgetUtils.GetCachedStatefulImage(Decorations, DecorationMarker);
 
-			var separator = ChromeProvider.GetImage(SeparatorCollection, SeparatorImage);
-			WidgetUtils.DrawRGBA(separator, new float2(-3, 0) + new float2(rb.Right - rb.Height + 4, rb.Top + (rb.Height - separator.Bounds.Height) / 2));
+			var arrowImage = getMarkerImage.Update((isDisabled, Depressed, isHover, false, IsHighlighted()));
+			WidgetUtils.DrawSprite(arrowImage, stateOffset + new float2(rb.Right - (int)((rb.Height + arrowImage.Size.X) / 2), rb.Top + (int)((rb.Height - arrowImage.Size.Y) / 2)));
+
+			if (getSeparatorImage == null)
+				getSeparatorImage = WidgetUtils.GetCachedStatefulImage(Separators, SeparatorImage);
+
+			var separatorImage = getSeparatorImage.Update((isDisabled, Depressed, isHover, false, IsHighlighted()));
+			if (separatorImage != null)
+				WidgetUtils.DrawSprite(separatorImage, stateOffset + new float2(-3, 0) + new float2(rb.Right - rb.Height + 4, rb.Top + (int)((rb.Height - separatorImage.Size.Y) / 2)));
 		}
 
 		public override Widget Clone() { return new DropDownButtonWidget(this); }
 
 		// This is crap
-		public override int UsableWidth { get { return Bounds.Width - Bounds.Height; } } /* space for button */
+		public override int UsableWidth => Bounds.Width - Bounds.Height; /* space for button */
 
 		public override void Hidden()
 		{
@@ -90,8 +107,11 @@ namespace OpenRA.Mods.Common.Widgets
 			panel = p;
 
 			// Mask to prevent any clicks from being sent to other widgets
-			fullscreenMask = new MaskWidget();
-			fullscreenMask.Bounds = new Rectangle(0, 0, Game.Renderer.Resolution.Width, Game.Renderer.Resolution.Height);
+			fullscreenMask = new MaskWidget
+			{
+				Bounds = new Rectangle(0, 0, Game.Renderer.Resolution.Width, Game.Renderer.Resolution.Height)
+			};
+
 			fullscreenMask.OnMouseDown += mi => { Game.Sound.PlayNotification(ModRules, null, "Sounds", ClickSound, null); RemovePanel(); };
 			if (onCancel != null)
 				fullscreenMask.OnMouseDown += _ => onCancel();
@@ -101,16 +121,24 @@ namespace OpenRA.Mods.Common.Widgets
 			panelRoot.AddChild(fullscreenMask);
 
 			var oldBounds = panel.Bounds;
+			var panelX = RenderOrigin.X - panelRoot.RenderOrigin.X;
+			if (PanelAlign == TextAlign.Right)
+				panelX += Bounds.Width - oldBounds.Width;
+			else if (PanelAlign == TextAlign.Center)
+				panelX += (Bounds.Width - oldBounds.Width) / 2;
+
+			var panelY = RenderOrigin.Y + Bounds.Height - panelRoot.RenderOrigin.Y;
+			if (panelY + oldBounds.Height > Game.Renderer.Resolution.Height)
+				panelY -= (Bounds.Height + oldBounds.Height);
+
 			panel.Bounds = new Rectangle(
-				RenderOrigin.X - panelRoot.RenderOrigin.X,
-				RenderOrigin.Y + Bounds.Height - panelRoot.RenderOrigin.Y,
+				panelX,
+				panelY,
 				oldBounds.Width,
 				oldBounds.Height);
 			panelRoot.AddChild(panel);
 
-			var scrollPanel = panel as ScrollPanelWidget;
-			if (scrollPanel != null)
-				scrollPanel.ScrollToSelectedItem();
+			(panel as ScrollPanelWidget)?.ScrollToSelectedItem();
 		}
 
 		public void ShowDropDown<T>(string panelTemplate, int maxHeight, IEnumerable<T> options, Func<T, ScrollItemWidget, ScrollItemWidget> setupItem)
@@ -149,7 +177,7 @@ namespace OpenRA.Mods.Common.Widgets
 				var group = kv.Key;
 				if (group.Length > 0 && headerTemplate != null)
 				{
-					var header = ScrollItemWidget.Setup(headerTemplate, () => true, () => { });
+					var header = ScrollItemWidget.Setup(headerTemplate, () => false, () => { });
 					header.Get<LabelWidget>("LABEL").GetText = () => group;
 					panel.AddChild(header);
 				}

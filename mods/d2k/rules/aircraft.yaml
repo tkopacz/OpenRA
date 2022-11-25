@@ -2,6 +2,8 @@ carryall.reinforce:
 	Inherits: ^Plane
 	Valued:
 		Cost: 1100
+	UpdatesPlayerStatistics:
+		AddToAssetsValue: false
 	Tooltip:
 		Name: Carryall
 	Health:
@@ -11,16 +13,14 @@ carryall.reinforce:
 	Aircraft:
 		CruiseAltitude: 2160
 		CruisingCondition: cruising
-		InitialFacing: 0
 		Speed: 144
-		TurnSpeed: 4
+		TurnSpeed: 16
 		LandableTerrainTypes: Sand, Rock, Transition, Spice, SpiceSand, Dune, Concrete
 		Repulsable: False
-		LandWhenIdle: False
 		AirborneCondition: airborne
-		CanHover: True
+		CanSlide: True
 		VTOL: true
-		IdleTurnSpeed: 1
+		IdleTurnSpeed: 4
 	Targetable@GROUND:
 		TargetTypes: Ground, Vehicle
 		RequiresCondition: !airborne
@@ -34,27 +34,33 @@ carryall.reinforce:
 		Actor: carryall.huskVTOL
 		RequiresCondition: !cruising
 	Carryall:
-		LoadingDelay: 10
-		UnloadingDelay: 15
+		BeforeLoadDelay: 10
+		BeforeUnloadDelay: 15
 		LocalOffset: 0, 0, -128
 	RenderSprites:
 		Image: carryall
-	SelfHealing:
+	ChangesHealth:
 		Step: 50
 		Delay: 3
-		HealIfBelow: 50
+		StartIfBelow: 50
 	Buildable:
-		BuildDuration: 648
-		BuildDurationModifier: 40
+		BuildDuration: 750
+		BuildDurationModifier: 100
 		Description: Large winged, planet-bound ship\n  Automatically lifts harvesters from and to Spice.\n  Lifts vehicles to Repair Pads when ordered.
 
 carryall:
 	Inherits: carryall.reinforce
+	UpdatesPlayerStatistics:
+		AddToAssetsValue: true
 	-Carryall:
 	AutoCarryall:
-		LoadingDelay: 10
-		UnloadingDelay: 15
+		BeforeLoadDelay: 10
+		BeforeUnloadDelay: 15
 		LocalOffset: 0, 0, -128
+	Encyclopedia:
+		Description: Carryalls will automatically transport Harvesters back and forth from the Spice Fields to the Refineries. They will also pick up units and deliver them to the Repair Pad, when ordered to.\n\nThe Carryall is a lightly armored transport aircraft. They are vulnerable to missiles and can only be hit by anti-aircraft weapons.
+		Order: 230
+		Category: Units
 	Aircraft:
 		MinAirborneAltitude: 400
 	RevealsShroud@lifting_low:
@@ -77,35 +83,43 @@ frigate:
 	Tooltip:
 		Name: Frigate
 	Aircraft:
+		IdleBehavior: LeaveMap
 		Speed: 189
-		TurnSpeed: 1
+		TurnSpeed: 4
 		Repulsable: False
 		MaximumPitch: 20
 		CruiseAltitude: 2048
-		LandableTerrainTypes: Rock, Concrete
+		VTOL: true
+		CanHover: true
+		CanSlide: true
 	-AppearsOnRadar:
 	Cargo:
 		MaxWeight: 20
-		PipCount: 10
-	FlyAwayOnIdle:
 	RejectsOrders:
 
 ornithopter:
 	Inherits: ^Plane
+	Buildable:
+		Prerequisites: upgrade.hightech
 	AttackBomber:
+		FacingTolerance: 8
 	Armament:
 		Weapon: OrniBomb
 	Health:
 		HP: 9000
 	Armor:
 		Type: light
+	Encyclopedia:
+		Description: The fastest aircraft on Dune, the Ornithopther is lightly armored and capable of dropping 500lb bombs. This unit is most effective against infantry and lightly armored targets, but also damages armored targets.
+		Order: 240
+		Category: Units
 	Aircraft:
 		Speed: 224
-		TurnSpeed: 2
+		TurnSpeed: 8
 		Repulsable: False
-		CanHover: True
 		CruiseAltitude: 1920
-		VTOL: true
+	Targetable:
+		TargetTypes: Air
 	AmmoPool:
 		Ammo: 5
 	Tooltip:
@@ -121,7 +135,7 @@ ornithopter.husk:
 	Tooltip:
 		Name: Ornithopter
 	Aircraft:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 224
 	RenderSprites:
 		Image: ornithopter
@@ -131,9 +145,9 @@ carryall.husk:
 	Tooltip:
 		Name: Carryall
 	Aircraft:
-		TurnSpeed: 4
+		TurnSpeed: 16
 		Speed: 144
-		CanHover: True
+		CanSlide: True
 		VTOL: true
 	RenderSprites:
 		Image: carryall
@@ -146,8 +160,8 @@ carryall.huskVTOL:
 		Moves: False
 		Velocity: 0c128
 	Aircraft:
-		TurnSpeed: 4
-		CanHover: True
+		TurnSpeed: 16
+		CanSlide: True
 		VTOL: true
 	RenderSprites:
 		Image: carryall

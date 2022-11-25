@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,12 +9,13 @@
  */
 #endregion
 
-using System.Linq;
+using OpenRA.Mods.Common.Pathfinder;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
-	public class JumpjetActorLayerInfo : ITraitInfo
+	[TraitLocation(SystemActors.World)]
+	public class JumpjetActorLayerInfo : TraitInfo, ICustomMovementLayerInfo
 	{
 		[Desc("Terrain type of the airborne layer.")]
 		public readonly string TerrainType = "Jumpjet";
@@ -25,7 +26,7 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Cell radius for smoothing adjacent cell heights.")]
 		public readonly int SmoothingRadius = 2;
 
-		public object Create(ActorInitializer init) { return new JumpjetActorLayer(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new JumpjetActorLayer(init.Self, this); }
 	}
 
 	public class JumpjetActorLayer : ICustomMovementLayer
@@ -38,7 +39,7 @@ namespace OpenRA.Mods.Common.Traits
 		public JumpjetActorLayer(Actor self, JumpjetActorLayerInfo info)
 		{
 			map = self.World.Map;
-			terrainIndex = self.World.Map.Rules.TileSet.GetTerrainIndex(info.TerrainType);
+			terrainIndex = self.World.Map.Rules.TerrainInfo.GetTerrainIndex(info.TerrainType);
 			height = new CellLayer<int>(map);
 			var cellHeight = self.World.Map.CellHeightStep.Length;
 			foreach (var c in map.AllCells)
@@ -62,10 +63,10 @@ namespace OpenRA.Mods.Common.Traits
 			}
 		}
 
-		bool ICustomMovementLayer.EnabledForActor(ActorInfo a, LocomotorInfo li) { return li is JumpjetLocomotorInfo; }
-		byte ICustomMovementLayer.Index { get { return CustomMovementLayerType.Jumpjet; } }
-		bool ICustomMovementLayer.InteractsWithDefaultLayer { get { return true; } }
-		bool ICustomMovementLayer.ReturnToGroundLayerOnIdle { get { return true; } }
+		bool ICustomMovementLayer.EnabledForLocomotor(LocomotorInfo li) { return li is JumpjetLocomotorInfo; }
+		byte ICustomMovementLayer.Index => CustomMovementLayerType.Jumpjet;
+		bool ICustomMovementLayer.InteractsWithDefaultLayer => true;
+		bool ICustomMovementLayer.ReturnToGroundLayerOnIdle => true;
 
 		WPos ICustomMovementLayer.CenterOfCell(CPos cell)
 		{
@@ -77,27 +78,25 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			var terrainType = map.GetTerrainInfo(cell).Type;
 			var jli = (JumpjetLocomotorInfo)li;
-			if (!jli.JumpjetTransitionTerrainTypes.Contains(terrainType) && jli.JumpjetTransitionTerrainTypes.Any())
+			if (!jli.JumpjetTransitionTerrainTypes.Contains(terrainType) && jli.JumpjetTransitionTerrainTypes.Count > 0)
 				return false;
 
 			if (jli.JumpjetTransitionOnRamps)
 				return true;
 
-			var tile = map.Tiles[cell];
-			var ti = map.Rules.TileSet.GetTileInfo(tile);
-			return ti == null || ti.RampType == 0;
+			return map.Ramp[cell] == 0;
 		}
 
-		int ICustomMovementLayer.EntryMovementCost(ActorInfo a, LocomotorInfo li, CPos cell)
+		short ICustomMovementLayer.EntryMovementCost(LocomotorInfo li, CPos cell)
 		{
 			var jli = (JumpjetLocomotorInfo)li;
-			return ValidTransitionCell(cell, jli) ? jli.JumpjetTransitionCost : int.MaxValue;
+			return ValidTransitionCell(cell, jli) ? jli.JumpjetTransitionCost : PathGraph.MovementCostForUnreachableCell;
 		}
 
-		int ICustomMovementLayer.ExitMovementCost(ActorInfo a, LocomotorInfo li, CPos cell)
+		short ICustomMovementLayer.ExitMovementCost(LocomotorInfo li, CPos cell)
 		{
 			var jli = (JumpjetLocomotorInfo)li;
-			return ValidTransitionCell(cell, jli) ? jli.JumpjetTransitionCost : int.MaxValue;
+			return ValidTransitionCell(cell, jli) ? jli.JumpjetTransitionCost : PathGraph.MovementCostForUnreachableCell;
 		}
 
 		byte ICustomMovementLayer.GetTerrainIndex(CPos cell)

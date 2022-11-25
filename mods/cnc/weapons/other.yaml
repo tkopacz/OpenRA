@@ -1,13 +1,13 @@
 ^FlameWeapon:
 	ValidTargets: Ground, Water, Trees
 	ReloadDelay: 55
-	Range: 2c512
+	Range: 3c0
 	InvalidTargets: Wall
 	Report: flamer2.aud
 	Projectile: Bullet
 		Speed: 1c682
 	Warhead@1Dam: SpreadDamage
-		Spread: 468
+		Spread: 256
 		Damage: 4000
 		ValidTargets: Ground, Water, Trees
 		InvalidTargets: Wall
@@ -16,13 +16,13 @@
 			Wood: 100
 			Light: 100
 			Heavy: 10
+			Concrete: 100
 		DamageTypes: Prone50Percent, TriggerProne, FireDeath, Incendiary
 	Warhead@2Smu: LeaveSmudge
 		SmudgeType: Scorch
 		InvalidTargets: Vehicle, Structure, Wall
 	Warhead@3Eff: CreateEffect
 		Explosions: small_napalm
-		ImpactSounds: flamer2.aud
 		ImpactActors: false
 
 Flamethrower:
@@ -30,12 +30,12 @@ Flamethrower:
 
 BigFlamer:
 	Inherits: ^FlameWeapon
-	ReloadDelay: 50
+	ReloadDelay: 65
 	Range: 3c512
 	Projectile: Bullet
 		Speed: 341
 	Burst: 2
-	BurstDelays: 25
+	BurstDelays: 10
 	Warhead@1Dam: SpreadDamage
 		Spread: 400
 		Damage: 10000
@@ -44,23 +44,23 @@ BigFlamer:
 			Wood: 75
 			Light: 75
 			Heavy: 18
+			Concrete: 75
 	Warhead@3Eff: CreateEffect
 		Explosions: med_napalm
 
 Chemspray:
 	Inherits: ^FlameWeapon
 	ReloadDelay: 65
-	Range: 3c0
-	InvalidTargets:
+	-InvalidTargets:
 	Warhead@1Dam: SpreadDamage
-		Spread: 256
 		Damage: 8000
-		InvalidTargets:
+		-InvalidTargets:
 		Versus:
 			None: 70
 			Wood: 35
 			Light: 75
 			Heavy: 75
+			Concrete: 75
 		DamageTypes: Prone50Percent, TriggerProne, TiberiumDeath
 	Warhead@3Eff: CreateEffect
 		Explosions: chemball
@@ -83,6 +83,7 @@ Napalm:
 		Versus:
 			Wood: 35
 			Heavy: 80
+			Concrete: 80
 	Warhead@3Eff: CreateEffect
 		Explosions: med_napalm
 
@@ -118,6 +119,7 @@ Laser:
 			Wood: 10
 			Light: 30
 			Heavy: 10
+			Concrete: 10
 		DamageTypes: Prone50Percent, TriggerProne, RippedApartDeath
 
 Tail:

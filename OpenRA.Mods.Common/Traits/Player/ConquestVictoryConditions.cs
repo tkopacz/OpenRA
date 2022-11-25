@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -11,24 +11,23 @@
 
 using System.Linq;
 using OpenRA.Network;
-using OpenRA.Primitives;
 using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
-	public class ConquestVictoryConditionsInfo : ITraitInfo, Requires<MissionObjectivesInfo>
+	[TraitLocation(SystemActors.Player)]
+	public class ConquestVictoryConditionsInfo : TraitInfo, Requires<MissionObjectivesInfo>
 	{
 		[Desc("Delay for the end game notification in milliseconds.")]
 		public readonly int NotificationDelay = 1500;
 
-		[Translate]
 		[Desc("Description of the objective.")]
 		public readonly string Objective = "Destroy all opposition!";
 
 		[Desc("Disable the win/loss messages and audio notifications?")]
 		public readonly bool SuppressNotifications = false;
 
-		public object Create(ActorInitializer init) { return new ConquestVictoryConditions(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new ConquestVictoryConditions(init.Self, this); }
 	}
 
 	public class ConquestVictoryConditions : ITick, INotifyWinStateChanged, INotifyTimeLimit
@@ -78,12 +77,12 @@ namespace OpenRA.Mods.Common.Traits
 
 			var myTeam = self.World.LobbyInfo.ClientWithIndex(self.Owner.ClientIndex).Team;
 			var teams = self.World.Players.Where(p => !p.NonCombatant && p.Playable)
-				.Select(p => new Pair<Player, PlayerStatistics>(p, p.PlayerActor.TraitOrDefault<PlayerStatistics>()))
-				.OrderByDescending(p => p.Second != null ? p.Second.Experience : 0)
-				.GroupBy(p => (self.World.LobbyInfo.ClientWithIndex(p.First.ClientIndex) ?? new Session.Client()).Team)
-				.OrderByDescending(g => g.Sum(gg => gg.Second != null ? gg.Second.Experience : 0));
+				.Select(p => (Player: p, PlayerStatistics: p.PlayerActor.TraitOrDefault<PlayerStatistics>()))
+				.OrderByDescending(p => p.PlayerStatistics?.Experience ?? 0)
+				.GroupBy(p => (self.World.LobbyInfo.ClientWithIndex(p.Player.ClientIndex) ?? new Session.Client()).Team)
+				.OrderByDescending(g => g.Sum(gg => gg.PlayerStatistics?.Experience ?? 0));
 
-			if (teams.First().Key == myTeam && (myTeam != 0 || teams.First().First().First == self.Owner))
+			if (teams.First().Key == myTeam && (myTeam != 0 || teams.First().First().Player == self.Owner))
 			{
 				mo.MarkCompleted(self.Owner, objectiveID);
 				return;
@@ -100,11 +99,14 @@ namespace OpenRA.Mods.Common.Traits
 			if (info.SuppressNotifications)
 				return;
 
-			Game.AddSystemLine("Battlefield Control", player.PlayerName + " is defeated.");
+			TextNotificationsManager.AddSystemLine(player.PlayerName + " is defeated.");
 			Game.RunAfterDelay(info.NotificationDelay, () =>
 			{
 				if (Game.IsCurrentWorld(player.World) && player == player.World.LocalPlayer)
+				{
 					Game.Sound.PlayNotification(player.World.Map.Rules, player, "Speech", mo.Info.LoseNotification, player.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(mo.Info.LoseTextNotification, player);
+				}
 			});
 		}
 
@@ -113,11 +115,14 @@ namespace OpenRA.Mods.Common.Traits
 			if (info.SuppressNotifications)
 				return;
 
-			Game.AddSystemLine("Battlefield Control", player.PlayerName + " is victorious.");
+			TextNotificationsManager.AddSystemLine(player.PlayerName + " is victorious.");
 			Game.RunAfterDelay(info.NotificationDelay, () =>
 			{
 				if (Game.IsCurrentWorld(player.World) && player == player.World.LocalPlayer)
+				{
 					Game.Sound.PlayNotification(player.World.Map.Rules, player, "Speech", mo.Info.WinNotification, player.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(mo.Info.WinTextNotification, player);
+				}
 			});
 		}
 	}

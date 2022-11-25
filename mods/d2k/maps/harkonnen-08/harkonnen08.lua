@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -133,7 +133,7 @@ SendAirStrike = function()
 	end)
 
 	if #targets > 0 then
-		AHiTechFactory.SendAirstrike(Utils.Random(targets).CenterPosition, true, 0)
+		AHiTechFactory.TargetAirstrike(Utils.Random(targets).CenterPosition)
 	end
 
 	Trigger.AfterDelay(DateTime.Minutes(5), SendAirStrike)
@@ -281,7 +281,7 @@ WorldLoaded = function()
 	Trigger.OnCapture(MHeavyFactory, function()
 		player.MarkCompletedObjective(AllyWithMercenaries)
 		Media.DisplayMessage("Leader Captured. Mercenaries have been persuaded to fight with House Harkonnen.", "Mentat")
-		MercenaryAttackLocation = OPalace.Location
+		MercenaryAttackLocation = MercenaryAttackPoint.Location
 
 		ChangeOwner(mercenary_enemy, mercenary_ally)
 		SendStarportReinforcements(mercenary_ally)

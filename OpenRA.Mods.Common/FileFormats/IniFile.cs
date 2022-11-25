@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -19,7 +19,7 @@ namespace OpenRA.Mods.Common.FileFormats
 {
 	public class IniFile
 	{
-		Dictionary<string, IniSection> sections = new Dictionary<string, IniSection>();
+		readonly Dictionary<string, IniSection> sections = new Dictionary<string, IniSection>();
 
 		public IniFile(Stream s)
 		{
@@ -35,13 +35,9 @@ namespace OpenRA.Mods.Common.FileFormats
 
 		public void Load(Stream s)
 		{
-			var reader = new StreamReader(s);
 			IniSection currentSection = null;
-
-			while (!reader.EndOfStream)
+			foreach (var line in s.ReadAllLines())
 			{
-				var line = reader.ReadLine();
-
 				if (line.Length == 0) continue;
 
 				switch (line[0])
@@ -53,7 +49,7 @@ namespace OpenRA.Mods.Common.FileFormats
 			}
 		}
 
-		Regex sectionPattern = new Regex(@"^\[([^]]*)\]");
+		readonly Regex sectionPattern = new Regex(@"^\[([^]]*)\]");
 
 		IniSection ProcessSection(string line)
 		{
@@ -62,8 +58,7 @@ namespace OpenRA.Mods.Common.FileFormats
 				return null;
 			var sectionName = m.Groups[1].Value.ToLowerInvariant();
 
-			IniSection ret;
-			if (!sections.TryGetValue(sectionName, out ret))
+			if (!sections.TryGetValue(sectionName, out var ret))
 				sections.Add(sectionName, ret = new IniSection(sectionName));
 			return ret;
 		}
@@ -102,8 +97,7 @@ namespace OpenRA.Mods.Common.FileFormats
 
 		public IniSection GetSection(string s, bool allowFail)
 		{
-			IniSection section;
-			if (sections.TryGetValue(s.ToLowerInvariant(), out section))
+			if (sections.TryGetValue(s.ToLowerInvariant(), out var section))
 				return section;
 
 			if (allowFail)
@@ -111,13 +105,13 @@ namespace OpenRA.Mods.Common.FileFormats
 			throw new InvalidOperationException("Section does not exist in map or rules: " + s);
 		}
 
-		public IEnumerable<IniSection> Sections { get { return sections.Values; } }
+		public IEnumerable<IniSection> Sections => sections.Values;
 	}
 
 	public class IniSection : IEnumerable<KeyValuePair<string, string>>
 	{
-		public string Name { get; private set; }
-		Dictionary<string, string> values = new Dictionary<string, string>();
+		public string Name { get; }
+		readonly Dictionary<string, string> values = new Dictionary<string, string>();
 
 		public IniSection(string name)
 		{
@@ -136,8 +130,7 @@ namespace OpenRA.Mods.Common.FileFormats
 
 		public string GetValue(string key, string defaultValue)
 		{
-			string s;
-			return values.TryGetValue(key, out s) ? s : defaultValue;
+			return values.TryGetValue(key, out var s) ? s : defaultValue;
 		}
 
 		public IEnumerator<KeyValuePair<string, string>> GetEnumerator()

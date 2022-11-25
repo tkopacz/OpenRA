@@ -15,7 +15,7 @@ BGGY:
 		Prerequisites: ~naweap, ~techlevel.low
 		Description: Fast scout and anti-infantry vehicle.\n  Strong vs Infantry, Light armor\n  Weak vs Vehicles, Aircraft
 	Mobile:
-		TurnSpeed: 8
+		TurnSpeed: 32
 		Speed: 142
 	Health:
 		HP: 22000
@@ -29,11 +29,10 @@ BGGY:
 		Weapon: RaiderCannon
 		LocalOffset: 0,-61,543, 0,61,543
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
-		MuzzleSplitFacings: 8
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	WithMuzzleOverlay:
 	-DamagedByTerrain@VEINS:
 	-LeavesTrails@VEINS:
@@ -55,7 +54,7 @@ BIKE:
 		Prerequisites: ~naweap, ~techlevel.low
 		Description: Fast scout vehicle, armed with\nrockets.\n  Strong vs Vehicles\n  Weak vs Infantry, Aircraft
 	Mobile:
-		TurnSpeed: 8
+		TurnSpeed: 32
 		Speed: 170
 	Health:
 		HP: 15000
@@ -76,6 +75,7 @@ BIKE:
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	DamagedByTerrain@VEINS:
 		RequiresCondition: !inside-tunnel && !rank-elite
 	LeavesTrails@VEINS:
@@ -102,9 +102,9 @@ TTNK:
 		Prerequisites: ~naweap, ~techlevel.medium
 		Description: Nod's main battle tank.\nCan deploy to gain extra protection.\n  Strong vs Vehicles\n  Weak vs Infantry, Aircraft
 	Mobile:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 85
-		PauseOnCondition: empdisable || being-captured
+		ImmovableCondition: !undeployed
 		RequireForceMoveCondition: !undeployed
 	Health:
 		HP: 35000
@@ -116,13 +116,11 @@ TTNK:
 		LocalOffset: 407,0,362
 		RequiresCondition: !rank-elite
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 	Armament@ELITE:
 		Weapon: 120mmx
 		LocalOffset: 407,0,362
 		RequiresCondition: rank-elite
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 	WithMuzzleOverlay:
 	RevealsShroud:
 		RequiresCondition: !inside-tunnel
@@ -136,7 +134,8 @@ TTNK:
 		DeployedCondition: deployed
 		UndeployedCondition: undeployed
 		UndeployOnMove: true
-		Facing: 160
+		UndeployOnPickup: true
+		Facing: 640
 		AllowedTerrainTypes: Clear, Road, DirtRoad, Rough
 		DeploySounds: place2.aud
 		UndeploySounds: clicky1.aud
@@ -157,10 +156,11 @@ TTNK:
 		Voice: Attack
 		RequiresCondition: undeployed
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	Turreted:
-		TurnSpeed: 6
+		TurnSpeed: 24
 		Turret: deployed
-		InitialFacing: 160
+		InitialFacing: 640
 		Offset: -20, -130, 128
 		RealignDelay: -1
 	WithVoxelBarrel:
@@ -184,7 +184,6 @@ TTNK:
 		LocalOffset: 543,0,362
 		RequiresCondition: !rank-elite
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 	Armament@deployedElite:
 		Name: deployed
 		Turret: deployed
@@ -192,7 +191,6 @@ TTNK:
 		LocalOffset: 543,0,362
 		RequiresCondition: rank-elite
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 	Armor@deployed:
 		Type: Concrete
 		RequiresCondition: deployed
@@ -200,8 +198,6 @@ TTNK:
 		Range: 1c768
 		RequiresCondition: rank-elite
 	RenderDetectionCircle:
-	Carryable:
-		RequiresCondition: undeployed
 	RevealOnFire:
 		ArmamentNames: primary, deployed
 	RenderVoxels:
@@ -233,8 +229,8 @@ ART2:
 		Type: Light
 	Mobile:
 		Speed: 71
-		TurnSpeed: 2
-		PauseOnCondition: empdisable || being-captured
+		TurnSpeed: 8
+		ImmovableCondition: !undeployed
 		RequireForceMoveCondition: !undeployed
 	RevealsShroud:
 		RequiresCondition: !inside-tunnel
@@ -250,7 +246,8 @@ ART2:
 		DeployedCondition: deployed
 		UndeployedCondition: undeployed
 		UndeployOnMove: true
-		Facing: 96
+		UndeployOnPickup: true
+		Facing: 384
 		AllowedTerrainTypes: Clear, Road, DirtRoad, Rough
 		DeploySounds: place2.aud
 		UndeploySounds: clicky1.aud
@@ -269,8 +266,8 @@ ART2:
 		RequiresCondition: !undeployed && real-actor
 	Turreted:
 		Turret: deployed
-		TurnSpeed: 5
-		InitialFacing: 96
+		TurnSpeed: 20
+		InitialFacing: 384
 		Offset: 0,0,256
 		RealignDelay: -1
 	WithVoxelBarrel:
@@ -297,10 +294,7 @@ ART2:
 		LocalOffset: 820,0,1386
 		RequiresCondition: deployed
 		MuzzleSequence: muzzle
-		MuzzlePalette: effect-ignore-lighting
 	WithMuzzleOverlay:
-	Carryable:
-		RequiresCondition: undeployed
 	RevealOnFire:
 		ArmamentNames: deployed
 
@@ -322,7 +316,7 @@ REPAIR:
 		HP: 20000
 	Mobile:
 		Speed: 85
-		TurnSpeed: 5
+		TurnSpeed: 20
 	RevealsShroud:
 		RequiresCondition: !inside-tunnel
 		Range: 5c0
@@ -331,18 +325,22 @@ REPAIR:
 		Weapon: Repair
 		Cursor: repair
 		OutsideRangeCursor: repair
-		TargetStances: Ally
-		ForceTargetStances: None
+		TargetRelationships: Ally
+		ForceTargetRelationships: None
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	AutoTarget:
+		ScanRadius: 8
+		InitialStance: AttackAnything
 	AutoTargetPriority@DEFAULT:
-		ValidTargets: Vehicles
+		ValidTargets: Vehicle
 
 WEED:
 	Inherits: ^Tank
 	Inherits@VOXELS: ^VoxelActor
+	Inherits@selection: ^SelectableEconomicUnit
 	Valued:
 		Cost: 1400
 	Tooltip:
@@ -359,18 +357,18 @@ WEED:
 		BaleUnloadDelay: 20
 		BaleLoadDelay: 40
 		SearchFromProcRadius: 72
-		SearchFromOrderRadius: 36
+		SearchFromHarvesterRadius: 36
 		HarvestVoice: Attack
 		DeliverVoice: Move
 	Mobile:
 		Speed: 71
-		TurnSpeed: 5
+		TurnSpeed: 20
 	Health:
 		HP: 60000
-	SelfHealing:
+	ChangesHealth:
 		Step: 500
 		Delay: 10
-		HealIfBelow: 50
+		StartIfBelow: 50
 		DamageCooldown: 200
 	Armor:
 		Type: Heavy
@@ -382,10 +380,18 @@ WEED:
 	WithVoxelUnloadBody:
 	-DamagedByTerrain@VEINS:
 	-LeavesTrails@VEINS:
+	WithHarvesterPipsDecoration:
+		Position: BottomLeft
+		RequiresSelection: true
+		Margin: 5, 2
+		FullSequence: pip-red
+		Palette: pips
+		PipCount: 7
 
 SAPC:
 	Inherits: ^Tank
 	Inherits@VOXELS: ^VoxelActor
+	Inherits@CARGOPIPS: ^CargoPips
 	Valued:
 		Cost: 800
 	Tooltip:
@@ -398,9 +404,9 @@ SAPC:
 		Prerequisites: ~naweap, natech, ~techlevel.medium
 		Description: Troop transport that can move\nunderground to avoid detection.\n  Unarmed
 	Mobile:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 71
-		PauseOnCondition: empdisable || loading || being-captured
+		PauseOnCondition: empdisable || loading || being-captured || carried
 		Locomotor: subterranean
 	Health:
 		HP: 17500
@@ -413,7 +419,6 @@ SAPC:
 	Cargo:
 		Types: Infantry
 		MaxWeight: 5
-		PipCount: 5
 		UnloadVoice: Unload
 		LoadingCondition: loading
 		EjectOnDeath: true
@@ -421,11 +426,18 @@ SAPC:
 		RequiresCondition: !submerged
 	Targetable:
 		RequiresCondition: !inside-tunnel && !submerged
+	Targetable@UNDERGROUND:
+		TargetTypes: Underground
+		RequiresCondition: submerged
 	GrantConditionOnSubterraneanLayer:
 		Condition: submerged
 		SubterraneanTransitionImage: dig
 		SubterraneanTransitionSequence: idle
 		SubterraneanTransitionSound: subdril1.aud
+	Carryable:
+		RequiresCondition: !submerged
+	WithDecoration@UNDERGROUND:
+		RequiresCondition: inside-tunnel || submerged
 
 SUBTANK:
 	Inherits: ^Tank
@@ -444,7 +456,7 @@ SUBTANK:
 		Prerequisites: ~naweap, natech, ~techlevel.high
 		Description: Subterranean Flame Tank.\nIs able to move underground.\n  Strong vs Infantry, Buildings\n  Weak vs Tanks, Aircraft
 	Mobile:
-		TurnSpeed: 6
+		TurnSpeed: 24
 		Speed: 71
 		Locomotor: subterranean
 	Health:
@@ -460,15 +472,23 @@ SUBTANK:
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	WithVoxelBody:
 		RequiresCondition: !submerged
 	Targetable:
 		RequiresCondition: !inside-tunnel && !submerged
+	Targetable@UNDERGROUND:
+		TargetTypes: Underground
+		RequiresCondition: submerged
 	GrantConditionOnSubterraneanLayer:
 		Condition: submerged
 		SubterraneanTransitionImage: dig
 		SubterraneanTransitionSequence: idle
 		SubterraneanTransitionSound: subdril1.aud
+	Carryable:
+		RequiresCondition: !submerged
+	WithDecoration@UNDERGROUND:
+		RequiresCondition: inside-tunnel || submerged
 
 STNK:
 	Inherits: ^Tank
@@ -487,7 +507,7 @@ STNK:
 		Queue: Vehicle
 		Description: Lightly armoured tank equipped with a personal\nstealth generator. Armed with missiles.\nCan be spotted by infantry at close range.\n  Strong vs Vehicles, Aircraft\n  Weak vs Infantry
 	Mobile:
-		TurnSpeed: 5
+		TurnSpeed: 20
 		Speed: 85
 	Health:
 		HP: 18000
@@ -505,6 +525,7 @@ STNK:
 		IsPlayerPalette: true
 		UncloakOn: Attack, Unload, Infiltrate, Demolish, Damage, Heal
 		PauseOnCondition: cloak-force-disabled || empdisable
+		CloakType: nod-stealth
 	GrantConditionOnDamageState@UNCLOAK:
 		Condition: cloak-force-disabled
 		ValidDamageStates: Critical
@@ -514,6 +535,7 @@ STNK:
 	AttackFrontal:
 		Voice: Attack
 		PauseOnCondition: empdisable
+		FacingTolerance: 0
 	AutoTarget:
 		InitialStance: HoldFire
 		InitialStanceAI: ReturnFire

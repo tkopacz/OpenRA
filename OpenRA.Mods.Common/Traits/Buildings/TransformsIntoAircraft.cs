@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -9,10 +9,8 @@
  */
 #endregion
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using OpenRA.Activities;
 using OpenRA.Mods.Common.Activities;
 using OpenRA.Mods.Common.Orders;
 using OpenRA.Primitives;
@@ -35,6 +33,25 @@ namespace OpenRA.Mods.Common.Traits
 
 		[Desc("Require the force-move modifier to display the move cursor.")]
 		public readonly bool RequiresForceMove = false;
+
+		[CursorReference]
+		[Desc("Cursor to display when a move order can be issued at target location.")]
+		public readonly string Cursor = "move";
+
+		[CursorReference]
+		[Desc("Cursor to display when a move order cannot be issued at target location.")]
+		public readonly string BlockedCursor = "move-blocked";
+
+		[CursorReference]
+		[Desc("Cursor to display when able to land at target building.")]
+		public readonly string EnterCursor = "enter";
+
+		[CursorReference]
+		[Desc("Cursor to display when unable to land at target building.")]
+		public readonly string EnterBlockedCursor = "enter-blocked";
+
+		[Desc("Color to use for the target line for regular move orders.")]
+		public readonly Color TargetLineColor = Color.Green;
 
 		public override object Create(ActorInitializer init) { return new TransformsIntoAircraft(init, this); }
 	}
@@ -62,9 +79,15 @@ namespace OpenRA.Mods.Common.Traits
 			{
 				if (!IsTraitDisabled)
 				{
-					yield return new EnterAlliedActorTargeter<BuildingInfo>("Enter", 5, AircraftCanEnter,
-					 target => Reservable.IsAvailableFor(target, self));
-					yield return new AircraftMoveOrderTargeter(self, this);
+					yield return new EnterAlliedActorTargeter<BuildingInfo>(
+						"Enter",
+						5,
+						Info.EnterCursor,
+						Info.EnterBlockedCursor,
+						AircraftCanEnter,
+						target => Reservable.IsAvailableFor(target, self));
+
+					yield return new AircraftMoveOrderTargeter(this);
 				}
 			}
 		}
@@ -83,7 +106,7 @@ namespace OpenRA.Mods.Common.Traits
 		}
 
 		// Note: Returns a valid order even if the unit can't move to the target
-		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, Target target, bool queued)
+		Order IIssueOrder.IssueOrder(Actor self, IOrderTargeter order, in Target target, bool queued)
 		{
 			if (order.OrderID == "Enter" || order.OrderID == "Move")
 				return new Order(order.OrderID, self, target, queued);
@@ -101,10 +124,6 @@ namespace OpenRA.Mods.Common.Traits
 				var cell = self.World.Map.Clamp(self.World.Map.CellContaining(order.Target.CenterPosition));
 				if (!Info.MoveIntoShroud && !self.Owner.Shroud.IsExplored(cell))
 					return;
-
-				var target = Target.FromCell(self.World, cell);
-
-				self.SetTargetLine(target, Color.Green);
 			}
 			else if (order.OrderString == "Enter")
 			{
@@ -113,23 +132,28 @@ namespace OpenRA.Mods.Common.Traits
 				if (order.Target.Type != TargetType.Actor)
 					return;
 
-				var targetActor = order.Target.Actor;
-
-				// We only want to set a target line if the order will (most likely) succeed
-				if (Reservable.IsAvailableFor(targetActor, self))
-					self.SetTargetLine(Target.FromActor(targetActor), Color.Green);
+				if (!AircraftCanEnter(order.Target.Actor))
+					return;
 			}
+			else
+				return;
 
 			var currentTransform = self.CurrentActivity as Transform;
 			var transform = transforms.FirstOrDefault(t => !t.IsTraitDisabled && !t.IsTraitPaused);
 			if (transform == null && currentTransform == null)
 				return;
 
-			var activity = currentTransform ?? transform.GetTransformActivity(self);
-			activity.Queue(self, new IssueOrderAfterTransform(order.OrderString, order.Target));
+			// Manually manage the inner activity queue
+			var activity = currentTransform ?? transform.GetTransformActivity();
+			if (!order.Queued)
+				activity.NextActivity?.Cancel(self);
+
+			activity.Queue(new IssueOrderAfterTransform(order.OrderString, order.Target, Info.TargetLineColor));
 
 			if (currentTransform == null)
 				self.QueueActivity(order.Queued, activity);
+
+			self.ShowTargetLines();
 		}
 
 		string IOrderVoice.VoicePhraseForOrder(Actor self, Order order)
@@ -158,35 +182,38 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			readonly TransformsIntoAircraft aircraft;
 
-			public bool TargetOverridesSelection(TargetModifiers modifiers)
+			public bool TargetOverridesSelection(Actor self, in Target target, List<Actor> actorsAt, CPos xy, TargetModifiers modifiers)
 			{
+				// Always prioritise orders over selecting other peoples actors or own actors that are already selected
+				if (target.Type == TargetType.Actor && (target.Actor.Owner != self.Owner || self.World.Selection.Contains(target.Actor)))
+					return true;
+
 				return modifiers.HasModifier(TargetModifiers.ForceMove);
 			}
 
-			public AircraftMoveOrderTargeter(Actor self, TransformsIntoAircraft aircraft)
+			public AircraftMoveOrderTargeter(TransformsIntoAircraft aircraft)
 			{
 				this.aircraft = aircraft;
 			}
 
-			public string OrderID { get { return "Move"; } }
-			public int OrderPriority { get { return 4; } }
+			public string OrderID => "Move";
+			public int OrderPriority => 4;
 			public bool IsQueued { get; protected set; }
 
-			public bool CanTarget(Actor self, Target target, List<Actor> othersAtTarget, ref TargetModifiers modifiers, ref string cursor)
+			public bool CanTarget(Actor self, in Target target, ref TargetModifiers modifiers, ref string cursor)
 			{
 				if (target.Type != TargetType.Terrain || (aircraft.Info.RequiresForceMove && !modifiers.HasModifier(TargetModifiers.ForceMove)))
 					return false;
 
 				var location = self.World.Map.CellContaining(target.CenterPosition);
 				var explored = self.Owner.Shroud.IsExplored(location);
-				cursor = self.World.Map.Contains(location) ?
-					(self.World.Map.GetTerrainInfo(location).CustomCursor ?? "move") :
-					"move-blocked";
+				cursor = self.World.Map.Contains(location) ? aircraft.Info.Cursor : aircraft.Info.BlockedCursor;
 
 				IsQueued = modifiers.HasModifier(TargetModifiers.ForceQueue);
 
-				if (!explored && !aircraft.Info.MoveIntoShroud)
-					cursor = "move-blocked";
+				if (!(self.CurrentActivity is Transform || aircraft.transforms.Any(t => !t.IsTraitDisabled && !t.IsTraitPaused))
+					|| (!explored && !aircraft.Info.MoveIntoShroud))
+					cursor = aircraft.Info.BlockedCursor;
 
 				return true;
 			}

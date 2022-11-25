@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -12,55 +12,100 @@
 using System;
 using System.Linq;
 using OpenRA.Graphics;
+using OpenRA.Network;
 using OpenRA.Primitives;
+using OpenRA.Widgets;
 
 namespace OpenRA.Mods.Common.Widgets
 {
 	public static class WidgetUtils
 	{
-		public static Sprite GetChromeImage(World world, string name)
+		public static string GetStatefulImageName(string baseName, bool disabled = false, bool pressed = false, bool hover = false, bool focused = false)
 		{
-			return ChromeProvider.GetImage("chrome-" + world.LocalPlayer.Faction.InternalName, name);
+			var suffix = disabled ? "-disabled" :
+				focused ? "-focused" :
+				pressed ? "-pressed" :
+				hover ? "-hover" :
+				"";
+
+			return baseName + suffix;
 		}
 
-		public static void DrawRGBA(Sprite s, float2 pos)
+		public static CachedTransform<(bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted), Sprite> GetCachedStatefulImage(string collection, string imageName)
+		{
+			return new CachedTransform<(bool, bool, bool, bool, bool), Sprite>(
+				((bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted) args) =>
+					{
+						var collectionName = collection + (args.Highlighted ? "-highlighted" : "");
+						var variantImageName = GetStatefulImageName(imageName, args.Disabled, args.Pressed, args.Hover, args.Focused);
+						return ChromeProvider.TryGetImage(collectionName, variantImageName) ?? ChromeProvider.GetImage(collectionName, imageName);
+					});
+		}
+
+		// TODO: refactor buttons and related UI to use this function
+		public static CachedTransform<(bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted), Sprite[]> GetCachedStatefulPanelImages(string collection)
+		{
+			return new CachedTransform<(bool, bool, bool, bool, bool), Sprite[]>(
+				((bool Disabled, bool Pressed, bool Hover, bool Focused, bool Highlighted) args) =>
+					{
+						var collectionName = collection + (args.Highlighted ? "-highlighted" : "");
+						var variantCollectionName = GetStatefulImageName(collectionName, args.Disabled, args.Pressed, args.Hover, args.Focused);
+						return ChromeProvider.TryGetPanelImages(variantCollectionName) ?? ChromeProvider.GetPanelImages(collectionName);
+					});
+		}
+
+		public static void DrawSprite(Sprite s, float2 pos)
 		{
 			Game.Renderer.RgbaSpriteRenderer.DrawSprite(s, pos);
 		}
 
-		public static void DrawSHPCentered(Sprite s, float2 pos, PaletteReference p)
+		public static void DrawSprite(Sprite s, float2 pos, Size size)
 		{
-			Game.Renderer.SpriteRenderer.DrawSprite(s, pos - 0.5f * s.Size, p);
+			var scale = new float3(size.Width / s.Size.X, size.Height / s.Size.Y, 1f);
+			Game.Renderer.RgbaSpriteRenderer.DrawSprite(s, pos, scale);
 		}
 
-		public static void DrawSHPCentered(Sprite s, float2 pos, PaletteReference p, float scale)
+		public static void DrawSprite(Sprite s, float2 pos, float2 size)
 		{
-			Game.Renderer.SpriteRenderer.DrawSprite(s, pos - 0.5f * scale * s.Size, p, scale * s.Size);
+			var scale = new float3(size.X / s.Size.X, size.Y / s.Size.Y, 1f);
+			Game.Renderer.RgbaSpriteRenderer.DrawSprite(s, pos, scale);
+		}
+
+		public static void DrawSpriteCentered(Sprite s, PaletteReference p, float2 pos, float scale = 1f)
+		{
+			Game.Renderer.SpriteRenderer.DrawSprite(s, p, pos - 0.5f * scale * s.Size, scale);
 		}
 
 		public static void DrawPanel(string collection, Rectangle bounds)
 		{
-			DrawPanelPartial(collection, bounds, PanelSides.All);
+			var sprites = ChromeProvider.TryGetPanelImages(collection);
+			if (sprites != null)
+				DrawPanel(bounds, sprites);
 		}
 
 		public static void FillRectWithSprite(Rectangle r, Sprite s)
 		{
-			for (var x = r.Left; x < r.Right; x += (int)s.Size.X)
-				for (var y = r.Top; y < r.Bottom; y += (int)s.Size.Y)
+			var scale = s.Size.X / s.Bounds.Width;
+			for (var x = (float)r.Left; x < r.Right; x += s.Size.X)
+			{
+				for (var y = (float)r.Top; y < r.Bottom; y += s.Size.Y)
 				{
 					var ss = s;
-					var left = new int2(r.Right - x, r.Bottom - y);
-					if (left.X < (int)s.Size.X || left.Y < (int)s.Size.Y)
+					var dx = r.Right - x;
+					var dy = r.Bottom - y;
+					if (dx < s.Size.X || dy < s.Size.Y)
 					{
-						var rr = new Rectangle(s.Bounds.Left,
+						var rr = new Rectangle(
+							s.Bounds.Left,
 							s.Bounds.Top,
-							Math.Min(left.X, (int)s.Size.X),
-							Math.Min(left.Y, (int)s.Size.Y));
-						ss = new Sprite(s.Sheet, rr, s.Channel);
+							Math.Min(s.Bounds.Width, (int)(dx / scale)),
+							Math.Min(s.Bounds.Height, (int)(dy / scale)));
+						ss = new Sprite(s.Sheet, rr, s.Channel, scale);
 					}
 
-					DrawRGBA(ss, new float2(x, y));
+					DrawSprite(ss, new float2(x, y));
 				}
+			}
 		}
 
 		public static void FillRectWithColor(Rectangle r, Color c)
@@ -89,95 +134,70 @@ namespace OpenRA.Mods.Common.Widgets
 			Game.Renderer.RgbaColorRenderer.FillEllipse(tl, br, c);
 		}
 
-		public static int[] GetBorderSizes(string collection)
-		{
-			var images = new[] { "border-t", "border-b", "border-l", "border-r" };
-			var ss = images.Select(i => ChromeProvider.GetImage(collection, i)).ToList();
-			return new[] { (int)ss[0].Size.Y, (int)ss[1].Size.Y, (int)ss[2].Size.X, (int)ss[3].Size.X };
-		}
-
-		static bool HasFlags(this PanelSides a, PanelSides b)
-		{
-			// PERF: Enum.HasFlag is slower and requires allocations.
-			return (a & b) == b;
-		}
-
 		public static Rectangle InflateBy(this Rectangle rect, int l, int t, int r, int b)
 		{
 			return Rectangle.FromLTRB(rect.Left - l, rect.Top - t,
 				rect.Right + r, rect.Bottom + b);
 		}
 
-		public static void DrawPanelPartial(string collection, Rectangle bounds, PanelSides ps)
+		/// <summary>
+		/// Fill a rectangle with sprites defining a panel layout.
+		/// Draw order is center, borders, corners to allow mods to define fancy border and corner overlays.
+		/// </summary>
+		/// <param name="bounds">Rectangle to fill.</param>
+		/// <param name="sprites">Nine sprites defining the panel: TL, T, TR, L, C, R, BL, B, BR.</param>
+		public static void DrawPanel(Rectangle bounds, Sprite[] sprites)
 		{
-			DrawPanelPartial(bounds, ps,
-				ChromeProvider.GetImage(collection, "border-t"),
-				ChromeProvider.GetImage(collection, "border-b"),
-				ChromeProvider.GetImage(collection, "border-l"),
-				ChromeProvider.GetImage(collection, "border-r"),
-				ChromeProvider.GetImage(collection, "corner-tl"),
-				ChromeProvider.GetImage(collection, "corner-tr"),
-				ChromeProvider.GetImage(collection, "corner-bl"),
-				ChromeProvider.GetImage(collection, "corner-br"),
-				ChromeProvider.GetImage(collection, "background"));
-		}
+			if (sprites.Length != 9)
+				return;
 
-		public static void DrawPanelPartial(Rectangle bounds, PanelSides ps,
-			Sprite borderTop,
-			Sprite borderBottom,
-			Sprite borderLeft,
-			Sprite borderRight,
-			Sprite cornerTopLeft,
-			Sprite cornerTopRight,
-			Sprite cornerBottomLeft,
-			Sprite cornerBottomRight,
-			Sprite background)
-		{
-			var marginLeft = borderLeft == null ? 0 : (int)borderLeft.Size.X;
-			var marginTop = borderTop == null ? 0 : (int)borderTop.Size.Y;
-			var marginRight = borderRight == null ? 0 : (int)borderRight.Size.X;
-			var marginBottom = borderBottom == null ? 0 : (int)borderBottom.Size.Y;
+			var marginTop = sprites[1] == null ? 0 : (int)sprites[1].Size.Y;
+			var marginLeft = sprites[3] == null ? 0 : (int)sprites[3].Size.X;
+			var marginRight = sprites[5] == null ? 0 : (int)sprites[5].Size.X;
+			var marginBottom = sprites[7] == null ? 0 : (int)sprites[7].Size.Y;
 			var marginWidth = marginRight + marginLeft;
 			var marginHeight = marginBottom + marginTop;
 
-			// Background
-			if (ps.HasFlags(PanelSides.Center) && background != null)
+			// Center
+			if (sprites[4] != null)
 				FillRectWithSprite(new Rectangle(bounds.Left + marginLeft, bounds.Top + marginTop,
-					bounds.Width - marginWidth, bounds.Height - marginHeight),
-					background);
+					bounds.Width - marginWidth, bounds.Height - marginHeight), sprites[4]);
 
-			// Left border
-			if (ps.HasFlags(PanelSides.Left) && borderLeft != null)
+			// Left edge
+			if (sprites[3] != null)
 				FillRectWithSprite(new Rectangle(bounds.Left, bounds.Top + marginTop,
-					marginLeft, bounds.Height - marginHeight),
-					borderLeft);
+						marginLeft, bounds.Height - marginHeight), sprites[3]);
 
-			// Right border
-			if (ps.HasFlags(PanelSides.Right) && borderRight != null)
+			// Right edge
+			if (sprites[5] != null)
 				FillRectWithSprite(new Rectangle(bounds.Right - marginRight, bounds.Top + marginTop,
-					marginLeft, bounds.Height - marginHeight),
-					borderRight);
+					marginLeft, bounds.Height - marginHeight), sprites[5]);
 
-			// Top border
-			if (ps.HasFlags(PanelSides.Top) && borderTop != null)
+			// Top edge
+			if (sprites[1] != null)
 				FillRectWithSprite(new Rectangle(bounds.Left + marginLeft, bounds.Top,
-					bounds.Width - marginWidth, marginTop),
-					borderTop);
+					bounds.Width - marginWidth, marginTop), sprites[1]);
 
-			// Bottom border
-			if (ps.HasFlags(PanelSides.Bottom) && borderBottom != null)
+			// Bottom edge
+			if (sprites[7] != null)
 				FillRectWithSprite(new Rectangle(bounds.Left + marginLeft, bounds.Bottom - marginBottom,
-					bounds.Width - marginWidth, marginTop),
-					borderBottom);
+					bounds.Width - marginWidth, marginTop), sprites[7]);
 
-			if (ps.HasFlags(PanelSides.Left | PanelSides.Top) && cornerTopLeft != null)
-				DrawRGBA(cornerTopLeft, new float2(bounds.Left, bounds.Top));
-			if (ps.HasFlags(PanelSides.Right | PanelSides.Top) && cornerTopRight != null)
-				DrawRGBA(cornerTopRight, new float2(bounds.Right - cornerTopRight.Size.X, bounds.Top));
-			if (ps.HasFlags(PanelSides.Left | PanelSides.Bottom) && cornerBottomLeft != null)
-				DrawRGBA(cornerBottomLeft, new float2(bounds.Left, bounds.Bottom - cornerBottomLeft.Size.Y));
-			if (ps.HasFlags(PanelSides.Right | PanelSides.Bottom) && cornerBottomRight != null)
-				DrawRGBA(cornerBottomRight, new float2(bounds.Right - cornerBottomRight.Size.X, bounds.Bottom - cornerBottomRight.Size.Y));
+			// Top-left corner
+			if (sprites[0] != null)
+				DrawSprite(sprites[0], new float2(bounds.Left, bounds.Top));
+
+			// Top-right corner
+			if (sprites[2] != null)
+				DrawSprite(sprites[2], new float2(bounds.Right - sprites[2].Size.X, bounds.Top));
+
+			// Bottom-left corner
+			if (sprites[6] != null)
+				DrawSprite(sprites[6], new float2(bounds.Left, bounds.Bottom - sprites[6].Size.Y));
+
+			// Bottom-right corner
+			if (sprites[8] != null)
+				DrawSprite(sprites[8], new float2(bounds.Right - sprites[8].Size.X, bounds.Bottom - sprites[8].Size.Y));
 		}
 
 		public static string FormatTime(int ticks, int timestep)
@@ -201,10 +221,10 @@ namespace OpenRA.Mods.Common.Widgets
 			var minutes = seconds / 60;
 
 			if (minutes >= 60)
-				return "{0:D}:{1:D2}:{2:D2}".F(minutes / 60, minutes % 60, seconds % 60);
+				return $"{minutes / 60:D}:{minutes % 60:D2}:{seconds % 60:D2}";
 			if (leadingMinuteZero)
-				return "{0:D2}:{1:D2}".F(minutes, seconds % 60);
-			return "{0:D}:{1:D2}".F(minutes, seconds % 60);
+				return $"{minutes:D2}:{seconds % 60:D2}";
+			return $"{minutes:D}:{seconds % 60:D2}";
 		}
 
 		public static string WrapText(string text, int width, SpriteFont font)
@@ -276,6 +296,102 @@ namespace OpenRA.Mods.Common.Widgets
 			else
 				label.GetTooltipText = null;
 		}
+
+		public static void TruncateButtonToTooltip(ButtonWidget button, string text)
+		{
+			var truncatedText = TruncateText(text, button.Bounds.Width - button.LeftMargin - button.RightMargin, Game.Renderer.Fonts[button.Font]);
+
+			button.GetText = () => truncatedText;
+
+			if (text != truncatedText)
+				button.GetTooltipText = () => text;
+			else
+				button.GetTooltipText = null;
+		}
+
+		public static void BindButtonIcon(ButtonWidget button)
+		{
+			var icon = button.Get<ImageWidget>("ICON");
+
+			var cache = GetCachedStatefulImage(icon.ImageCollection, icon.ImageName);
+			icon.GetSprite = () => cache.Update((button.IsDisabled(), button.Depressed, Ui.MouseOverWidget == button, false, button.IsHighlighted()));
+		}
+
+		public static void BindPlayerNameAndStatus(LabelWidget label, Player p)
+		{
+			var client = p.World.LobbyInfo.ClientWithIndex(p.ClientIndex);
+			var nameFont = Game.Renderer.Fonts[label.Font];
+			var name = new CachedTransform<(string Name, WinState WinState, Session.ClientState ClientState), string>(c =>
+			{
+				var suffix = c.WinState == WinState.Undefined ? "" : " (" + c.Item2 + ")";
+				if (c.ClientState == Session.ClientState.Disconnected)
+					suffix = " (Gone)";
+
+				return TruncateText(c.Name, label.Bounds.Width - nameFont.Measure(suffix).X, nameFont) + suffix;
+			});
+
+			label.GetText = () =>
+			{
+				var clientState = client != null ? client.State : Session.ClientState.Ready;
+				return name.Update((p.PlayerName, p.WinState, clientState));
+			};
+		}
+
+		public static void SetupTextNotification(Widget notificationWidget, TextNotification notification, int boxWidth, bool withTimestamp)
+		{
+			var timeLabel = notificationWidget.GetOrNull<LabelWidget>("TIME");
+			var prefixLabel = notificationWidget.GetOrNull<LabelWidget>("PREFIX");
+			var textLabel = notificationWidget.Get<LabelWidget>("TEXT");
+
+			var textFont = Game.Renderer.Fonts[textLabel.Font];
+			var textWidth = boxWidth - notificationWidget.Bounds.X - textLabel.Bounds.X;
+
+			var hasPrefix = !string.IsNullOrEmpty(notification.Prefix) && prefixLabel != null;
+			var timeOffset = 0;
+
+			if (withTimestamp && timeLabel != null)
+			{
+				var time = $"{notification.Time.Hour:D2}:{notification.Time.Minute:D2}";
+				timeOffset = timeLabel.Bounds.Width + timeLabel.Bounds.X;
+
+				timeLabel.GetText = () => time;
+
+				textWidth -= timeOffset;
+				textLabel.Bounds.X += timeOffset;
+
+				if (hasPrefix)
+					prefixLabel.Bounds.X += timeOffset;
+			}
+
+			if (hasPrefix)
+			{
+				var prefix = notification.Prefix + ":";
+				var prefixSize = Game.Renderer.Fonts[prefixLabel.Font].Measure(prefix);
+				var prefixOffset = prefixSize.X + prefixLabel.Bounds.X;
+
+				prefixLabel.GetColor = () => notification.PrefixColor ?? prefixLabel.TextColor;
+				prefixLabel.GetText = () => prefix;
+				prefixLabel.Bounds.Width = prefixSize.X;
+
+				textWidth -= prefixOffset;
+				textLabel.Bounds.X += prefixOffset - timeOffset;
+			}
+
+			textLabel.GetColor = () => notification.TextColor ?? textLabel.TextColor;
+			textLabel.Bounds.Width = textWidth;
+
+			// Hack around our hacky wordwrap behavior: need to resize the widget to fit the text
+			var text = WrapText(notification.Text, textLabel.Bounds.Width, textFont);
+			textLabel.GetText = () => text;
+			var dh = textFont.Measure(text).Y - textLabel.Bounds.Height;
+			if (dh > 0)
+			{
+				textLabel.Bounds.Height += dh;
+				notificationWidget.Bounds.Height += dh;
+			}
+
+			notificationWidget.Bounds.Width = boxWidth - notificationWidget.Bounds.X;
+		}
 	}
 
 	public class CachedTransform<T, U>
@@ -302,18 +418,5 @@ namespace OpenRA.Mods.Common.Widgets
 
 			return lastOutput;
 		}
-	}
-
-	[Flags]
-	public enum PanelSides
-	{
-		Left = 1,
-		Top = 2,
-		Right = 4,
-		Bottom = 8,
-		Center = 16,
-
-		Edges = Left | Top | Right | Bottom,
-		All = Edges | Center,
 	}
 }

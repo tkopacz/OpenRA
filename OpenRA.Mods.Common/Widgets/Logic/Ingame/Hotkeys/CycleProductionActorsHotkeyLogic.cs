@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -36,8 +36,7 @@ namespace OpenRA.Mods.Common.Widgets.Logic.Ingame
 			selection = world.Selection;
 			this.world = world;
 
-			MiniYaml yaml;
-			if (logicArgs.TryGetValue("ClickSound", out yaml))
+			if (logicArgs.TryGetValue("ClickSound", out var yaml))
 				clickSound = yaml.Value;
 		}
 
@@ -46,12 +45,12 @@ namespace OpenRA.Mods.Common.Widgets.Logic.Ingame
 			var player = world.RenderPlayer ?? world.LocalPlayer;
 
 			var facilities = world.ActorsHavingTrait<Production>()
-				.Where(a => a.Owner == player && !a.Info.HasTraitInfo<BaseBuildingInfo>()
+				.Where(a => a.Owner == player && a.OccupiesSpace != null && !a.Info.HasTraitInfo<BaseBuildingInfo>()
 					&& a.TraitsImplementing<Production>().Any(t => !t.IsTraitDisabled))
 				.OrderBy(f => f.TraitsImplementing<Production>().First(t => !t.IsTraitDisabled).Info.Produces.First())
 				.ToList();
 
-			if (!facilities.Any())
+			if (facilities.Count == 0)
 				return true;
 
 			var next = facilities

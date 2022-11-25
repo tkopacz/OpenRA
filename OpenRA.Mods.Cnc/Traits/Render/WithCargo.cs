@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -21,7 +21,7 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Cnc.Traits.Render
 {
 	[Desc("Renders the cargo loaded into the unit.")]
-	public class WithCargoInfo : ITraitInfo, Requires<CargoInfo>, Requires<BodyOrientationInfo>
+	public class WithCargoInfo : TraitInfo, Requires<CargoInfo>, Requires<BodyOrientationInfo>
 	{
 		[Desc("Cargo position relative to turret or body in (forward, right, up) triples. The default offset should be in the middle of the list.")]
 		public readonly WVec[] LocalOffset = { WVec.Zero };
@@ -29,7 +29,7 @@ namespace OpenRA.Mods.Cnc.Traits.Render
 		[Desc("Passenger CargoType to display.")]
 		public readonly HashSet<string> DisplayTypes = new HashSet<string>();
 
-		public object Create(ActorInitializer init) { return new WithCargo(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new WithCargo(init.Self, this); }
 	}
 
 	public class WithCargo : ITick, IRender, INotifyPassengerEntered, INotifyPassengerExited
@@ -38,9 +38,9 @@ namespace OpenRA.Mods.Cnc.Traits.Render
 		readonly Cargo cargo;
 		readonly BodyOrientation body;
 		readonly IFacing facing;
-		int cachedFacing;
+		WAngle cachedFacing;
 
-		Dictionary<Actor, IActorPreview[]> previews = new Dictionary<Actor, IActorPreview[]>();
+		readonly Dictionary<Actor, IActorPreview[]> previews = new Dictionary<Actor, IActorPreview[]>();
 
 		public WithCargo(Actor self, WithCargoInfo info)
 		{
@@ -61,7 +61,7 @@ namespace OpenRA.Mods.Cnc.Traits.Render
 			// HACK: We don't have an efficient way to know when the preview
 			// bounds change, so assume that we need to update the screen map
 			// (only) when the facing changes
-			if (facing.Facing != cachedFacing && previews.Any())
+			if (facing.Facing != cachedFacing && previews.Count > 0)
 			{
 				self.World.ScreenMap.AddOrUpdate(self);
 				cachedFacing = facing.Facing;
@@ -70,7 +70,7 @@ namespace OpenRA.Mods.Cnc.Traits.Render
 
 		IEnumerable<IRenderable> IRender.Render(Actor self, WorldRenderer wr)
 		{
-			var bodyOrientation = body.QuantizeOrientation(self, self.Orientation);
+			var bodyOrientation = body.QuantizeOrientation(self.Orientation);
 			var pos = self.CenterPosition;
 			var i = 0;
 

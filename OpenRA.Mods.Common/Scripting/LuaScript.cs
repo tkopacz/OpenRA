@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -19,11 +19,11 @@ using OpenRA.Traits;
 namespace OpenRA.Mods.Common.Scripting
 {
 	[Desc("Part of the new Lua API.")]
-	public class LuaScriptInfo : ITraitInfo, Requires<SpawnMapActorsInfo>
+	public class LuaScriptInfo : TraitInfo, Requires<SpawnMapActorsInfo>
 	{
 		public readonly HashSet<string> Scripts = new HashSet<string>();
 
-		public object Create(ActorInitializer init) { return new LuaScript(this); }
+		public override object Create(ActorInitializer init) { return new LuaScript(this); }
 	}
 
 	public class LuaScript : ITick, IWorldLoaded, INotifyActorDisposing
@@ -46,7 +46,7 @@ namespace OpenRA.Mods.Common.Scripting
 
 		void ITick.Tick(Actor self)
 		{
-			context.Tick(self);
+			context.Tick();
 		}
 
 		void INotifyActorDisposing.Disposing(Actor self)
@@ -54,12 +54,11 @@ namespace OpenRA.Mods.Common.Scripting
 			if (disposed)
 				return;
 
-			if (context != null)
-				context.Dispose();
+			context?.Dispose();
 
 			disposed = true;
 		}
 
-		public bool FatalErrorOccurred { get { return context.FatalErrorOccurred; } }
+		public bool FatalErrorOccurred => context.FatalErrorOccurred;
 	}
 }

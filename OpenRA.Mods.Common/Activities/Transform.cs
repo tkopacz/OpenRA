@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using System.Collections.Generic;
 using OpenRA.Activities;
 using OpenRA.Mods.Common.Traits;
 using OpenRA.Mods.Common.Traits.Render;
@@ -22,14 +23,15 @@ namespace OpenRA.Mods.Common.Activities
 	{
 		public readonly string ToActor;
 		public CVec Offset = CVec.Zero;
-		public int Facing = 96;
-		public string[] Sounds = { };
+		public WAngle Facing = new WAngle(384);
+		public string[] Sounds = Array.Empty<string>();
 		public string Notification = null;
+		public string TextNotification = null;
 		public int ForceHealthPercentage = 0;
 		public bool SkipMakeAnims = false;
 		public string Faction = null;
 
-		public Transform(Actor self, string toActor)
+		public Transform(string toActor)
 		{
 			ToActor = toActor;
 		}
@@ -37,30 +39,21 @@ namespace OpenRA.Mods.Common.Activities
 		protected override void OnFirstRun(Actor self)
 		{
 			if (self.Info.HasTraitInfo<IFacingInfo>())
-				QueueChild(self, new Turn(self, Facing));
+				QueueChild(new Turn(self, Facing));
 
 			if (self.Info.HasTraitInfo<AircraftInfo>())
-				QueueChild(self, new Land(self));
+				QueueChild(new Land(self));
 		}
 
-		public override Activity Tick(Actor self)
+		public override bool Tick(Actor self)
 		{
 			if (IsCanceling)
-				return NextActivity;
-
-			if (ChildActivity != null)
-			{
-				ActivityUtils.RunActivity(self, ChildActivity);
-				return this;
-			}
+				return true;
 
 			// Prevent deployment in bogus locations
 			var transforms = self.TraitOrDefault<Transforms>();
 			if (transforms != null && !transforms.CanDeploy())
-			{
-				Cancel(self, true);
-				return NextActivity;
-			}
+				return true;
 
 			foreach (var nt in self.TraitsImplementing<INotifyTransform>())
 				nt.BeforeTransform(self);
@@ -72,18 +65,13 @@ namespace OpenRA.Mods.Common.Activities
 				IsInterruptible = false;
 
 				// Wait forever
-				QueueChild(self, new WaitFor(() => false));
+				QueueChild(new WaitFor(() => false));
 				makeAnimation.Reverse(self, () => DoTransform(self));
-				return this;
+				return false;
 			}
 
-			return NextActivity;
-		}
-
-		protected override void OnLastRun(Actor self)
-		{
-			if (!IsCanceling)
-				DoTransform(self);
+			DoTransform(self);
+			return true;
 		}
 
 		void DoTransform(Actor self)
@@ -101,13 +89,14 @@ namespace OpenRA.Mods.Common.Activities
 					nt.OnTransform(self);
 
 				var selected = w.Selection.Contains(self);
-				var controlgroup = w.Selection.GetControlGroupForActor(self);
+				var controlgroup = w.ControlGroups.GetControlGroupForActor(self);
 
 				self.Dispose();
 				foreach (var s in Sounds)
 					Game.Sound.PlayToPlayer(SoundType.World, self.Owner, s, self.CenterPosition);
 
 				Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", Notification, self.Owner.Faction.InternalName);
+				TextNotificationsManager.AddTransientLine(TextNotification, self.Owner);
 
 				var init = new TypeDictionary
 				{
@@ -140,6 +129,9 @@ namespace OpenRA.Mods.Common.Activities
 				// Use self.CurrentActivity to capture the parent activity if Transform is a child
 				foreach (var transfer in currentActivity.ActivitiesImplementing<IssueOrderAfterTransform>(false))
 				{
+					if (transfer.IsCanceling)
+						continue;
+
 					var order = transfer.IssueOrderForTransformedActor(a);
 					foreach (var t in a.TraitsImplementing<IResolveOrder>())
 						t.ResolveOrder(a, order);
@@ -151,7 +143,7 @@ namespace OpenRA.Mods.Common.Activities
 					w.Selection.Add(a);
 
 				if (controlgroup.HasValue)
-					w.Selection.AddToControlGroup(a, controlgroup.Value);
+					w.ControlGroups.AddToControlGroup(a, controlgroup.Value);
 			});
 		}
 	}
@@ -160,11 +152,13 @@ namespace OpenRA.Mods.Common.Activities
 	{
 		readonly string orderString;
 		readonly Target target;
+		readonly Color? targetLineColor;
 
-		public IssueOrderAfterTransform(string orderString, Target target)
+		public IssueOrderAfterTransform(string orderString, in Target target, Color? targetLineColor = null)
 		{
 			this.orderString = orderString;
 			this.target = target;
+			this.targetLineColor = targetLineColor;
 		}
 
 		public Order IssueOrderForTransformedActor(Actor newActor)
@@ -172,10 +166,10 @@ namespace OpenRA.Mods.Common.Activities
 			return new Order(orderString, newActor, target, true);
 		}
 
-		public override Activity Tick(Actor self)
+		public override IEnumerable<TargetLineNode> TargetLineNodes(Actor self)
 		{
-			// Activity is a placeholder that should never run
-			return NextActivity;
+			if (targetLineColor != null)
+				yield return new TargetLineNode(target, targetLineColor.Value);
 		}
 	}
 }

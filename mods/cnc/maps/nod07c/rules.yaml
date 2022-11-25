@@ -1,6 +1,6 @@
 World:
 	LuaScript:
-		Scripts: nod07c.lua
+		Scripts: campaign.lua, utils.lua, nod07c.lua
 	MusicPlaylist:
 		StartingMusic: justdoit
 		VictoryMusic: nod_win1
@@ -70,7 +70,8 @@ E5:
 
 HARV:
 	Harvester:
-		SearchFromOrderRadius: 30
+		SearchFromProcRadius: 30
+		SearchFromHarvesterRadius: 30
 
 HTNK:
 	Buildable:
@@ -104,6 +105,10 @@ HELI:
 	Buildable:
 		Prerequisites: ~disabled
 
+ORCA:
+	Buildable:
+		Prerequisites: ~disabled
+
 TRAN:
 	Buildable:
 		Prerequisites: ~disabled
@@ -116,7 +121,7 @@ BOAT:
 	Health:
 		HP: 150000
 	RevealsShroud:
-		ValidStances: Ally, Neutral, Enemy
+		ValidRelationships: Ally, Neutral, Enemy
 		Range: 4c0
 
 TRAN.IN:
@@ -150,6 +155,8 @@ HPAD.IN:
 
 ORCA.IN:
 	Inherits: ORCA
+	Buildable:
+		Prerequisites: ~hpad
 	RenderSprites:
 		Image: ORCA
 	-AutoTarget:

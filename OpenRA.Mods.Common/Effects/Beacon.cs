@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -78,7 +78,7 @@ namespace OpenRA.Mods.Common.Effects
 				if (clockFraction != null)
 				{
 					clock = new Animation(owner.World, posterCollection);
-					clock.PlayFetchIndex(clockSequence, () => Exts.Clamp((int)(clockFraction() * (clock.CurrentSequence.Length - 1)), 0, clock.CurrentSequence.Length - 1));
+					clock.PlayFetchIndex(clockSequence, () => ((int)(clockFraction() * (clock.CurrentSequence.Length - 1))).Clamp(0, clock.CurrentSequence.Length - 1));
 				}
 			}
 		}
@@ -96,17 +96,10 @@ namespace OpenRA.Mods.Common.Effects
 				arrowSpeed *= -1;
 			}
 
-			if (arrow != null)
-				arrow.Tick();
-
-			if (beacon != null)
-				beacon.Tick();
-
-			if (circles != null)
-				circles.Tick();
-
-			if (clock != null)
-				clock.Tick();
+			arrow?.Tick();
+			beacon?.Tick();
+			circles?.Tick();
+			clock?.Tick();
 
 			if (duration > 0 && duration <= tick++)
 				owner.World.AddFrameEndTask(w => w.Remove(this));

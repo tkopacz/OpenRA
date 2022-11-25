@@ -1,7 +1,7 @@
 ^concrete:
 	AlwaysVisible:
 	Interactable:
-	Building:
+	D2kBuilding:
 		TerrainTypes: Rock
 		BuildSounds: CHUNG.WAV
 		AllowInvalidPlacement: true
@@ -9,9 +9,6 @@
 	RequiresBuildableArea:
 		AreaTypes: building
 		Adjacent: 4
-	LaysTerrain:
-		Template: 88
-		TerrainTypes: Rock
 	Tooltip:
 		Name: Concrete
 		GenericName: Structure
@@ -25,21 +22,28 @@
 
 concretea:
 	Inherits: ^concrete
-	Building:
+	D2kBuilding:
 		Footprint: xx xx
 		Dimensions: 2,2
 	Tooltip:
 		Name: Concrete Slab
+	Encyclopedia:
+		Description: If buildings are not placed on concrete, they will be damaged. Buildings can be repaired, but unless the building sits completely on concrete, the building will suffer continual weathering damage from the erosive desert environment.\n\nConcrete is vulnerable to most weapon types. Concrete cannot be repaired if damaged.
+		Category: Buildings
+		Order: 10
 	Valued:
 		Cost: 20
 	Buildable:
-		BuildPaletteOrder: 10
-		BuildDuration: 54
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 110
+		Prerequisites: ~!global-auto-concrete
+		BuildDuration: 62
+		BuildDurationModifier: 100
+	WithSpriteBody:
+		Sequence: preview
 
 concreteb:
 	Inherits: ^concrete
-	Building:
+	D2kBuilding:
 		Footprint: xxx xxx xxx
 		Dimensions: 3,3
 	Tooltip:
@@ -47,26 +51,29 @@ concreteb:
 	Valued:
 		Cost: 50
 	Buildable:
-		BuildPaletteOrder: 40
-		Prerequisites: upgrade.conyard
-		BuildDuration: 81
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 210
+		Prerequisites: upgrade.conyard, ~!global-auto-concrete
+		BuildDuration: 94
+		BuildDurationModifier: 100
 
 construction_yard:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
+	Inherits@UPGRADEABLE: ^Upgradeable
 	Buildable:
 		Description: Produces structures.
-	-DamagedByTerrain:
-	Building:
+	D2kBuilding:
 		Footprint: xxx xxx ===
 		Dimensions: 3,3
 		LocalCenterOffset: 0,-512,0
-	LaysTerrain:
-		TerrainTypes: Rock
-		Template: 88
+		-ConcretePrerequisites:
+	Encyclopedia:
+		Description: The Construction Yard is the foundation of any base built on Arrakis. Construction Yards produce a small amount of power and are required for the building of any new structures. Protect this structure! It is critical to the success of your base.\n\nConstruction yards are fairly strong, but vulnerable in varying degrees to all types of weapons.
+		Category: Buildings
+		Order: 0
 	WithBuildingBib:
 	Selectable:
-		Bounds: 96,64
+		Bounds: 3072, 2048
 	Health:
 		HP: 30000
 	HitShape:
@@ -103,26 +110,10 @@ construction_yard:
 		RequiresCondition: !build-incomplete
 		Palette: d2k
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		ProductionQueues: Building
-		SelectionNotification: PrimaryBuildingSelected
 	ProvidesPrerequisite@buildingname:
-	GrantConditionOnPrerequisite:
+	GrantConditionOnPrerequisite@UPGRADEABLE:
 		Prerequisites: upgrade.conyard
-		Condition: stardecoration
-	WithDecoration@upgraded:
-		RequiresSelection: true
-		Image: pips
-		Sequence: tag-upgraded
-		ReferencePoint: Top, Right
-		ZOffset: 256
-		RequiresCondition: stardecoration
-	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
-		RequiresCondition: primary
 	RevealOnDeath:
 		Radius: 5c768
 
@@ -130,20 +121,24 @@ wind_trap:
 	Inherits: ^Building
 	Buildable:
 		Queue: Building
-		BuildPaletteOrder: 20
-		BuildDuration: 180
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 120
+		BuildDuration: 208
+		BuildDurationModifier: 100
 		Description: Provides power for other structures.
 	Selectable:
-		Bounds: 64,64
+		Bounds: 2048, 2048
 	Valued:
 		Cost: 225
 	Tooltip:
 		Name: Wind Trap
-	Building:
+	D2kBuilding:
 		Footprint: xx xx ==
 		Dimensions: 2,3
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: Wind Traps provide power and water to an installation. Large, above-ground ducts funnel wind currents underground into massive turbines which power generators and humidity extractors.\n\nWind Traps are vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 20
 	Health:
 		HP: 30000
 	HitShape:
@@ -174,23 +169,29 @@ wind_trap:
 
 barracks:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
+	Inherits@UPGRADEABLE: ^Upgradeable
 	Buildable:
 		Prerequisites: wind_trap
 		Queue: Building
-		BuildPaletteOrder: 50
-		BuildDuration: 231
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 220
+		BuildDuration: 268
+		BuildDurationModifier: 100
 		Description: Trains infantry.
 	Selectable:
-		Bounds: 64,64
+		Bounds: 2048, 2048
 	Valued:
 		Cost: 225
 	Tooltip:
 		Name: Barracks
-	Building:
+	D2kBuilding:
 		Footprint: xx xx ==
 		Dimensions: 2,3
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: Barracks are required to produce and train light infantry units. Barracks can be upgraded for the production of more advanced infantry in later missions.\n\nBarracks are vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 30
 	Health:
 		HP: 32000
 	HitShape:
@@ -202,7 +203,9 @@ barracks:
 	RevealsShroud:
 		Range: 3c768
 	RallyPoint:
-		Offset: 1,2
+		ForceSetType: Infantry
+	CommandBarBlacklist:
+		DisableStop: false
 	Exit@1:
 		SpawnOffset: 352,576,0
 		ExitCell: 0,2
@@ -212,9 +215,7 @@ barracks:
 	Production:
 		Produces: Infantry, Upgrade
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		ProductionQueues: Infantry
-		SelectionNotification: PrimaryBuildingSelected
 	ProductionBar:
 		ProductionType: Infantry
 	ProvidesPrerequisite@atreides:
@@ -237,22 +238,8 @@ barracks:
 			corrino: barracks.harkonnen
 	WithBuildingBib:
 	ProvidesPrerequisite@buildingname:
-	GrantConditionOnPrerequisite:
+	GrantConditionOnPrerequisite@UPGRADEABLE:
 		Prerequisites: upgrade.barracks
-		Condition: stardecoration
-	WithDecoration@upgraded:
-		RequiresSelection: true
-		Image: pips
-		Sequence: tag-upgraded
-		ReferencePoint: Top, Right
-		ZOffset: 256
-		RequiresCondition: stardecoration
-	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
-		RequiresCondition: primary
 	RevealOnDeath:
 		Radius: 3c768
 
@@ -261,20 +248,24 @@ refinery:
 	Buildable:
 		Prerequisites: wind_trap
 		Queue: Building
-		BuildPaletteOrder: 30
-		BuildDuration: 540
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 130
+		BuildDuration: 625
+		BuildDurationModifier: 100
 		Description: Harvesters unload Spice here for processing.
 	Selectable:
-		Bounds: 96,64
+		Bounds: 3072, 2048
 	Valued:
 		Cost: 1500
 	Tooltip:
 		Name: Spice Refinery
-	Building:
+	D2kBuilding:
 		Footprint: =xx xx= ===
 		Dimensions: 3,3
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: The Refinery is the basis of all Spice production on Dune. Harvesters transport mined Spice to the Refinery where it is converted into credits. Refined Spice is automatically distributed among the Silos and Refineries for storage. A refinery can store 2000 spice. A Spice Harvester is delivered via Carryall once a Refinery is built.\n\nRefineries are vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 40
 	Health:
 		HP: 30000
 	HitShape:
@@ -290,12 +281,10 @@ refinery:
 	RevealsShroud:
 		Range: 3c768
 	Refinery:
-		DockAngle: 160
+		DockAngle: 640
 		DockOffset: 2,1
 		TickRate: 20
 	StoresResources:
-		PipColor: green
-		PipCount: 10
 		Capacity: 2000
 	CustomSellValue:
 		Value: 500
@@ -321,18 +310,27 @@ refinery:
 	Power:
 		Amount: -75
 	ProvidesPrerequisite@buildingname:
+	WithResourceStoragePipsDecoration:
+		Position: BottomLeft
+		Margin: 1, 4
+		RequiresSelection: true
+		PipCount: 10
 
 silo:
 	Inherits: ^Building
 	Buildable:
 		Prerequisites: refinery
 		Queue: Building
-		BuildPaletteOrder: 120
-		BuildDuration: 135
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 310
+		BuildDuration: 156
+		BuildDurationModifier: 100
 		Description: Stores excess harvested Spice.
 	Selectable:
-		Bounds: 32,32
+		Bounds: 1024, 1024
+	Encyclopedia:
+		Description: The Spice Silo allows the player to store 1500 harvested Spice. When a Refinery completes processing, excess Spice is automatically distributed evenly among the Silos and Refineries. When harvested Spice exceeds Silo capacity, the excess will be lost. When Spice Silos are destroyed or captured, the amount stored will be dispersed among other Silos and Refineries unless there is insufficient storage capacity.\n\nThe Spice Silo is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 50
 	Valued:
 		Cost: 120
 	Tooltip:
@@ -357,8 +355,6 @@ silo:
 	WithResourceLevelSpriteBody:
 		Sequence: stages
 	StoresResources:
-		PipColor: green
-		PipCount: 5
 		Capacity: 2000
 	-SpawnActorsOnSell:
 	Power:
@@ -371,26 +367,37 @@ silo:
 		Range: 2c0, 5c0
 	RevealOnDeath:
 		Radius: 2c768
+	WithResourceStoragePipsDecoration:
+		Position: BottomLeft
+		Margin: 1, 4
+		RequiresSelection: true
+		PipCount: 5
 
 light_factory:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
+	Inherits@UPGRADEABLE: ^Upgradeable
 	Buildable:
 		Prerequisites: refinery
 		Queue: Building
-		BuildPaletteOrder: 60
-		BuildDuration: 277
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 230
+		BuildDuration: 321
+		BuildDurationModifier: 100
 		Description: Produces light vehicles.
 	Selectable:
-		Bounds: 96,64
+		Bounds: 3072, 2048
 	Valued:
 		Cost: 500
 	Tooltip:
 		Name: Light Factory
-	Building:
+	D2kBuilding:
 		Footprint: xxx xx= ===
 		Dimensions: 3,3
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: The Light Factory is required for the production of small, lightly armored, combat vehicles. The Light Factory can be upgraded to produce more advanced light vehicles in later missions.\n\nA Light Factory is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 60
 	Health:
 		HP: 33000
 	HitShape:
@@ -418,16 +425,16 @@ light_factory:
 		Queues: Vehicle
 		Sequence: production-welding
 	RallyPoint:
-		Offset: 2,2
+		ForceSetType: Vehicle
+	CommandBarBlacklist:
+		DisableStop: false
 	Exit@1:
 		SpawnOffset: 544,-224,0
 		ExitCell: 2,1
 	Production:
 		Produces: Vehicle, Upgrade
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		ProductionQueues: Vehicle
-		SelectionNotification: PrimaryBuildingSelected
 	ProductionBar:
 		ProductionType: Vehicle
 	ProvidesPrerequisite@atreides:
@@ -448,42 +455,34 @@ light_factory:
 	ProvidesPrerequisite@buildingname:
 	Power:
 		Amount: -125
-	GrantConditionOnPrerequisite:
+	GrantConditionOnPrerequisite@UPGRADEABLE:
 		Prerequisites: upgrade.light
-		Condition: stardecoration
-	WithDecoration@upgraded:
-		RequiresSelection: true
-		Image: pips
-		Sequence: tag-upgraded
-		ReferencePoint: Top, Right
-		ZOffset: 256
-		RequiresCondition: stardecoration
-	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
-		RequiresCondition: primary
 
 heavy_factory:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
+	Inherits@UPGRADEABLE: ^Upgradeable
 	Buildable:
 		Prerequisites: refinery
 		Queue: Building
-		BuildPaletteOrder: 90
-		BuildDuration: 648
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 330
+		BuildDuration: 750
+		BuildDurationModifier: 100
 		Description: Produces heavy vehicles.
 	Selectable:
-		Bounds: 96,96
+		Bounds: 3072, 3072
 	Valued:
 		Cost: 1000
 	Tooltip:
 		Name: Heavy Factory
-	Building:
+	D2kBuilding:
 		Footprint: _x_ xxx =xX ===
 		Dimensions: 3,4
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: The Heavy Factory allows the player to build heavy vehicles such as Harvesters and Combat Tanks. When upgraded, this facility allows the construction of advanced vehicles, though some vehicles also require other buildings.\n\nThe Heavy Factory is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 70
 	Health:
 		HP: 35000
 	HitShape:
@@ -500,16 +499,16 @@ heavy_factory:
 	RevealsShroud:
 		Range: 4c768
 	RallyPoint:
-		Offset: 0,3
+		ForceSetType: Armor
+	CommandBarBlacklist:
+		DisableStop: false
 	Exit@1:
 		SpawnOffset: 256,192,0
 		ExitCell: 0,2
 	Production:
 		Produces: Armor, Upgrade
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		ProductionQueues: Armor
-		SelectionNotification: PrimaryBuildingSelected
 	ProductionBar:
 		ProductionType: Armor
 	ProvidesPrerequisite@atreides:
@@ -552,22 +551,8 @@ heavy_factory:
 	Power:
 		Amount: -150
 	ProvidesPrerequisite@buildingname:
-	GrantConditionOnPrerequisite:
+	GrantConditionOnPrerequisite@UPGRADEABLE:
 		Prerequisites: upgrade.heavy
-		Condition: stardecoration
-	WithDecoration@upgraded:
-		RequiresSelection: true
-		Image: pips
-		Sequence: tag-upgraded
-		ReferencePoint: Top, Right
-		ZOffset: 256
-		RequiresCondition: stardecoration
-	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
-		RequiresCondition: primary
 
 outpost:
 	Inherits: ^Building
@@ -575,20 +560,24 @@ outpost:
 	Buildable:
 		Prerequisites: barracks, ~techlevel.medium
 		Queue: Building
-		BuildPaletteOrder: 80
-		BuildDuration: 270
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 320
+		BuildDuration: 312
+		BuildDurationModifier: 100
 		Description: Provides a radar map of the battlefield.\n  Requires power to operate.
 	Selectable:
-		Bounds: 96,64
+		Bounds: 3072, 2048
 	Valued:
 		Cost: 750
 	Tooltip:
 		Name: Outpost
-	Building:
+	D2kBuilding:
 		Footprint: xxx xxx ===
 		Dimensions: 3,3
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: If the player has sufficient power, the Radar Outpost will generate a radar map. Radar is automatically activated when construction of the Outpost is complete.\n\nThe Radar Outpost is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 80
 	Health:
 		HP: 35000
 	HitShape:
@@ -621,22 +610,27 @@ outpost:
 
 starport:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
 	Tooltip:
 		Name: Starport
 	Buildable:
 		Prerequisites: heavy_factory, outpost, ~techlevel.high
 		Queue: Building
-		BuildPaletteOrder: 70
-		BuildDuration: 540
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 530
+		BuildDuration: 625
+		BuildDurationModifier: 100
 		Description: Dropzone for quick reinforcements, at a price.
 	Valued:
 		Cost: 1500
-	Building:
+	D2kBuilding:
 		Footprint: xxx x=x =x=
 		Dimensions: 3,3
+	Encyclopedia:
+		Description: The Starport allows you to engage in intergalactic trading with the C.H.O.A.M. Merchants' Guild. The Starport provides a trading market for vehicles and airborne units at varying rates. You cannot purchase units from the Guild without this facility.\n\nArmor is heavy, but the Starport is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 90
 	Selectable:
-		Bounds: 96,96
+		Bounds: 3072, 3072
 	Health:
 		HP: 35000
 	HitShape:
@@ -652,7 +646,9 @@ starport:
 	RevealsShroud:
 		Range: 3c768
 	RallyPoint:
-		Offset: 1,3
+		ForceSetType: Starport
+	CommandBarBlacklist:
+		DisableStop: false
 	Exit@1:
 		SpawnOffset: 0,-480,0
 		ExitCell: 2,2
@@ -662,6 +658,7 @@ starport:
 	ProductionAirdrop:
 		Produces: Starport
 		ActorType: frigate
+		ReadyTextNotification: Reinforcements have arrived.
 	RenderSprites:
 		Image: starport.ordos
 		FactionImages:
@@ -676,9 +673,7 @@ starport:
 	ProductionBar:
 		ProductionType: Starport
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		ProductionQueues: Starport
-		SelectionNotification: PrimaryBuildingSelected
 	ProvidesPrerequisite@atreides:
 		Prerequisite: starport.atreides
 		Factions: atreides
@@ -700,12 +695,6 @@ starport:
 	Power:
 		Amount: -150
 	ProvidesPrerequisite@buildingname:
-	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
-		RequiresCondition: primary
 
 wall:
 	Inherits@1: ^SpriteActor
@@ -718,9 +707,9 @@ wall:
 	Buildable:
 		Queue: Building
 		Prerequisites: barracks
-		BuildPaletteOrder: 130
-		BuildDuration: 54
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 410
+		BuildDuration: 62
+		BuildDurationModifier: 100
 		Description: Stop units and blocks enemy fire.
 	Valued:
 		Cost: 20
@@ -730,11 +719,15 @@ wall:
 		Name: Concrete Wall
 		GenericName: Structure
 	AppearsOnRadar:
-	Building:
+	D2kBuilding:
 		BuildSounds: CHUNG.WAV
 		TerrainTypes: Rock, Concrete
+	Encyclopedia:
+		Description: Base defense. Concrete walls are the most effective barriers on Dune. Concrete walls will block tank bullets and impede unit movement.\n\nWalls can only be damaged by explosive weapons, missiles and shells. Like concrete slabs, walls cannot be repaired if damaged.
+		Category: Buildings
+		Order: 15
 	FootprintPlaceBuildingPreview:
-		LineBuildSegmentPalette: placelinesegment
+		LineBuildFootprintAlpha: 0.65
 	RequiresBuildableArea:
 		AreaTypes: building
 		Adjacent: 7
@@ -782,26 +775,25 @@ medium_gun_turret:
 	Buildable:
 		Queue: Building
 		Prerequisites: barracks
-		BuildPaletteOrder: 100
-		BuildDuration: 231
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 510
+		BuildDuration: 268
+		BuildDurationModifier: 100
 		Description: Defensive structure.\n  Strong vs Tanks\n  Weak vs Infantry, Aircraft
 	Valued:
 		Cost: 550
 	Tooltip:
 		Name: Gun Turret
-	Building:
-		BuildSounds: CHUNG.WAV
 	RequiresBuildableArea:
 		Adjacent: 4
-	Sellable:
-		SellSounds: CHUNG.WAV
 	Selectable:
-		Bounds: 32,32
-		DecorationBounds: 32,40,0,-8
-		Priority: 3
+		Bounds: 1024, 1024
+		DecorationBounds: 1024, 1280, 0, -256
 	Health:
 		HP: 27000
+	Encyclopedia:
+		Description: The Gun Turret has a medium range gun which is effective against vehicles, especially heavily armored vehicles. The Gun Turret will fire on any enemy unit within range.\n\nThe Gun Turret is resistant to bullet and explosive weapons, but vulnerable to missiles and high-caliber guns.
+		Category: Buildings
+		Order: 100
 	Armor:
 		Type: heavy
 	RevealsShroud:
@@ -810,8 +802,9 @@ medium_gun_turret:
 		QuantizedFacings: 32
 	WithMuzzleOverlay:
 	Turreted:
-		TurnSpeed: 6
-		InitialFacing: 128
+		TurnSpeed: 24
+		InitialFacing: 512
+		RealignDelay: -1
 	Armament:
 		Weapon: 110mm_Gun
 		LocalOffset: 512,0,432
@@ -824,30 +817,29 @@ medium_gun_turret:
 large_gun_turret:
 	Inherits: ^Defense
 	Inherits@IDISABLE: ^DisableOnLowPowerOrPowerDown
-	Inherits@AUTOTARGET: ^AutoTargetGround
+	Inherits@AUTOTARGET: ^AutoTargetAll
 	AttackTurreted:
-		PauseOnCondition: disabled
+		PauseOnCondition: disabled || build-incomplete
 	Buildable:
 		Queue: Building
 		Prerequisites: outpost, upgrade.conyard, ~techlevel.medium
-		BuildPaletteOrder: 110
-		BuildDuration: 270
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 610
+		BuildDuration: 312
+		BuildDurationModifier: 100
 		Description: Defensive structure.\n  Strong vs Infantry, Aircraft\n  Weak vs Tanks\n\n  Requires power to operate.
 	Valued:
 		Cost: 750
 	Tooltip:
 		Name: Rocket Turret
-	Building:
-		BuildSounds: CHUNG.WAV
+	Encyclopedia:
+		Description: The substantially improved Rocket Turret has a longer range and a higher rate of fire than the Gun Turret. The Rocket Turret's advanced targeting equipment requires power to operate.\n\nThe Rocket Turret is resistant to bullet and explosive weapons, but vulnerable to missiles and high caliber guns.
+		Category: Buildings
+		Order: 110
 	RequiresBuildableArea:
 		Adjacent: 4
-	Sellable:
-		SellSounds: CHUNG.WAV
 	Selectable:
-		Bounds: 32,32
-		DecorationBounds: 32,40,0,-8
-		Priority: 3
+		Bounds: 1024, 1024
+		DecorationBounds: 1024, 1280, 0, -256
 	Health:
 		HP: 30000
 	Armor:
@@ -860,8 +852,9 @@ large_gun_turret:
 		Weapon: TowerMissile
 		LocalOffset: 256,384,768, 256,-384,768
 	Turreted:
-		TurnSpeed: 8
-		InitialFacing: 128
+		TurnSpeed: 32
+		InitialFacing: 512
+		RealignDelay: -1
 	Power:
 		Amount: -60
 	RevealOnDeath:
@@ -874,17 +867,21 @@ repair_pad:
 	Buildable:
 		Queue: Building
 		Prerequisites: heavy_factory, upgrade.heavy, ~techlevel.medium
-		BuildPaletteOrder: 150
-		BuildDuration: 324
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 430
+		BuildDuration: 375
+		BuildDurationModifier: 100
 		Description: Repairs vehicles.\n Allows construction of MCVs
 	Valued:
 		Cost: 800
 	Tooltip:
 		Name: Repair Pad
-	Building:
-		Footprint: =x= xxx =x=
+	D2kBuilding:
+		Footprint: +++ +++ +++
 		Dimensions: 3,3
+	Encyclopedia:
+		Description: With a Repair Pad, vehicles can be repaired for a varying price.\n\nThe Repair Pad is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 120
 	Health:
 		HP: 30000
 	HitShape:
@@ -900,16 +897,19 @@ repair_pad:
 	RevealsShroud:
 		Range: 3c768
 	Selectable:
-		Bounds: 96,96
+		Bounds: 3072, 3072
 	Reservable:
 	RepairsUnits:
 		Interval: 10
 		HpPerStep: 800
 		StartRepairingNotification: Repairing
+		StartRepairingTextNotification: Repairing.
 		FinishRepairingNotification: UnitRepaired
-		PlayerExperience: 15
+		FinishRepairingTextNotification: Unit repaired.
+		PlayerExperience: 10
 	RallyPoint:
-		Offset: 1,3
+	CommandBarBlacklist:
+		DisableStop: false
 	RenderSprites:
 		Image: repair_pad.ordos
 		FactionImages:
@@ -926,15 +926,17 @@ repair_pad:
 
 high_tech_factory:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
+	Inherits@UPGRADEABLE: ^Upgradeable
 	Buildable:
 		Prerequisites: outpost, ~techlevel.medium
 		Queue: Building
-		BuildPaletteOrder: 140
-		BuildDuration: 405
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 420
+		BuildDuration: 468
+		BuildDurationModifier: 100
 		Description: Unlocks advanced technology.
 	Selectable:
-		Bounds: 96,96
+		Bounds: 3072, 3072
 	Valued:
 		Cost: 1150
 	Tooltip:
@@ -944,16 +946,18 @@ high_tech_factory:
 	ProductionBar:
 		ProductionType: Aircraft
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		ProductionQueues: Aircraft
-		SelectionNotification: PrimaryBuildingSelected
 	Exit:
 		SpawnOffset: 0,0,728
 		ExitCell: 0,0
-	Building:
+	D2kBuilding:
 		Footprint: _X_ xxx XXX ===
 		Dimensions: 3,4
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: The High Tech Factory produces airborne units, and is required for the production of Carryalls. House Atreides can upgrade the High Tech Factory to build Ornithopters for an air strike in later missions.\n\nThe High Tech Factory is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 130
 	Health:
 		HP: 35000
 	HitShape:
@@ -988,55 +992,51 @@ high_tech_factory:
 	ProvidesPrerequisite@buildingname:
 	AirstrikePower:
 		Icon: ornistrike
-		Description: Air Strike
+		Name: Air Strike
 		Prerequisites: ~techlevel.superweapons, upgrade.hightech
 		ChargeInterval: 7500
 		SquadSize: 3
 		SquadOffset: -1536, 1024, 0
-		LongDesc: Ornithopters hit the target with bombs
+		Description: Ornithopters hit the target with bombs
 		UnitType: ornithopter
 		DisplayBeacon: True
 		CameraActor: camera
+		CameraRemoveDelay: 60
 		ArrowSequence: arrow
 		CircleSequence: circles
+		UseDirectionalTarget: True
+		DirectionArrowAnimation: ornidirection
+		SupportPowerPaletteOrder: 10
+		EndChargeTextNotification: Airstrike ready.
+		SelectTargetTextNotification: Select target.
 	Power:
 		Amount: -75
-	GrantConditionOnPrerequisite:
+	GrantConditionOnPrerequisite@UPGRADEABLE:
 		Prerequisites: upgrade.hightech
-		Condition: stardecoration
-	WithDecoration@upgraded:
-		RequiresSelection: true
-		Image: pips
-		Sequence: tag-upgraded
-		ReferencePoint: Top, Right
-		ZOffset: 256
-		RequiresCondition: stardecoration
-	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
-		RequiresCondition: primary
 
 research_centre:
 	Inherits: ^Building
 	Buildable:
 		Queue: Building
 		Prerequisites: outpost, heavy_factory, upgrade.heavy, ~techlevel.high
-		BuildPaletteOrder: 160
-		BuildDuration: 270
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 520
+		BuildDuration: 312
+		BuildDurationModifier: 100
 		Description: Unlocks advanced tanks.
 	Selectable:
-		Bounds: 96,96
+		Bounds: 3072, 3072
 	Valued:
 		Cost: 1000
 	Tooltip:
 		Name: IX Research Center
-	Building:
+	D2kBuilding:
 		Footprint: _X_ xxx XXX ===
 		Dimensions: 3,4
 		LocalCenterOffset: 0,-512,0
+	Encyclopedia:
+		Description: The IX Research Center provides technology upgrades for structures and vehicles. This facility is required for production of a number of advanced special weapons and prototypes.\n\nThe IX Research Center is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 140
 	Health:
 		HP: 25000
 	HitShape:
@@ -1070,23 +1070,31 @@ research_centre:
 
 palace:
 	Inherits: ^Building
+	Inherits@PRIMARY: ^PrimaryBuilding
 	Inherits@IDISABLE: ^DisableOnLowPowerOrPowerDown
 	Buildable:
 		Prerequisites: research_centre, ~techlevel.high
 		Queue: Building
-		BuildPaletteOrder: 170
-		BuildDuration: 810
-		BuildDurationModifier: 40
+		BuildPaletteOrder: 620
+		BuildDuration: 937
+		BuildDurationModifier: 100
 		Description: Unlocks elite infantry and weapons.
 	Selectable:
-		Bounds: 96,96
+		Bounds: 3072, 3072
 	Valued:
 		Cost: 1600
 	Tooltip:
 		Name: Palace
-	Building:
+	RallyPoint:
+	CommandBarBlacklist:
+		DisableStop: false
+	D2kBuilding:
 		Footprint: xx= xxx =xx
 		Dimensions: 3,3
+	Encyclopedia:
+		Description: The Palace serves as the command center once it is constructed. Palaces feature unique additional options, making available advanced special weapons.\n\nArmor is heavy, but the Palace is vulnerable to most types of weapons.
+		Category: Buildings
+		Order: 150
 	Health:
 		HP: 40000
 	HitShape:
@@ -1114,7 +1122,7 @@ palace:
 			corrino: palace.corrino
 	WithBuildingBib:
 		HasMinibib: True
-	WithNukeLaunchOverlay:
+	WithSupportPowerActivationOverlay:
 		RequiresCondition: !build-incomplete && !launchpad-damaged && harkonnen
 	GrantConditionOnDamageState@LAUNCHPADDAMAGED:
 		Condition: launchpad-damaged
@@ -1133,14 +1141,8 @@ palace:
 		Prerequisite: palace.sardaukar
 		Factions: corrino
 	PrimaryBuilding:
-		PrimaryCondition: primary
 		RequiresCondition: atreides || ordos
-		SelectionNotification: PrimaryBuildingSelected
 	WithTextDecoration@primary:
-		RequiresSelection: true
-		Text: PRIMARY
-		ReferencePoint: Top
-		ZOffset: 256
 		RequiresCondition: primary && (atreides || ordos)
 	NukePower:
 		Cursor: nuke
@@ -1149,12 +1151,17 @@ palace:
 		RequiresCondition: harkonnen
 		Prerequisites: ~techlevel.superweapons, ~palace.nuke
 		ChargeInterval: 7500
-		Description: Death Hand
-		LongDesc: Launches an atomic missile at a target location
+		Name: Death Hand
+		Description: Launches an atomic missile at a target location
 		BeginChargeSpeechNotification: DeathHandMissilePrepping
 		EndChargeSpeechNotification: DeathHandMissileReady
-		LaunchSpeechNotification: MissileLaunchDetected
+		IncomingSpeechNotification: MissileLaunchDetected
+		BeginChargeTextNotification: Death Hand missile prepping.
+		EndChargeTextNotification: Death Hand missile ready.
+		IncomingTextNotification: Missile launch detected.
+		SelectTargetTextNotification: Select target.
 		MissileWeapon: deathhand
+		MissileImage: deathhand
 		MissileDelay: 18
 		SpawnOffset: 32,816,0
 		DetonationAltitude: 3c0
@@ -1162,15 +1169,17 @@ palace:
 		DisplayBeacon: True
 		DisplayRadarPing: True
 		CameraRange: 10c0
+		CameraRemoveDelay: 60
 		ArrowSequence: arrow
 		CircleSequence: circles
 		FlightVelocity: 384
 		TrailInterval: 0
 		TrailImage: large_trail
 		TrailSequences: idle
+		SupportPowerPaletteOrder: 40
 	ProduceActorPower@fremen:
-		Description: Recruit Fremen
-		LongDesc: Elite infantry unit armed with assault rifles and rockets\n  Strong vs Infantry, Vehicles\n  Weak vs Artillery\n  Special Ability: Invisibility
+		Name: Recruit Fremen
+		Description: Elite infantry unit armed with assault rifles and rockets\n  Strong vs Infantry, Vehicles\n  Weak vs Artillery\n  Special Ability: Invisibility
 		Icon: fremen
 		PauseOnCondition: disabled
 		RequiresCondition: atreides
@@ -1178,12 +1187,16 @@ palace:
 		Actors: fremen, fremen
 		Type: Fremen
 		ChargeInterval: 2250
+		EndChargeTextNotification: Fremen ready.
 		ReadyAudio: Reinforce
+		ReadyTextNotification: Reinforcements have arrived.
 		BlockedAudio: NoRoom
+		BlockedTextNotification: No room for new unit.
 		OrderName: ProduceActorPower.Fremen
+		SupportPowerPaletteOrder: 20
 	ProduceActorPower@saboteur:
-		Description: Recruit Saboteur
-		LongDesc: Sneaky infantry, armed with explosives\n  Strong vs Buildings\n  Weak vs Everything\n  Special Ability: destroy buildings
+		Name: Recruit Saboteur
+		Description: Sneaky infantry, armed with explosives\n  Strong vs Buildings\n  Weak vs Everything\n  Special Ability: destroy buildings
 		Icon: saboteur
 		PauseOnCondition: disabled
 		RequiresCondition: ordos
@@ -1191,9 +1204,13 @@ palace:
 		Actors: saboteur
 		Type: Saboteur
 		ChargeInterval: 2250
+		EndChargeTextNotification: Saboteur ready.
 		ReadyAudio: Reinforce
+		ReadyTextNotification: Reinforcements have arrived.
 		BlockedAudio: NoRoom
+		BlockedTextNotification: No room for new unit.
 		OrderName: ProduceActorPower.Saboteur
+		SupportPowerPaletteOrder: 30
 	Exit@1:
 		SpawnOffset: -704,768,0
 		ExitCell: -1,2
@@ -1232,6 +1249,8 @@ conyard.atreides:
 	RenderSprites:
 		Image: conyard.atreides
 		-FactionImages:
+	UpdatesPlayerStatistics:
+		OverrideActor: construction_yard
 
 conyard.harkonnen:
 	Inherits: construction_yard
@@ -1243,6 +1262,8 @@ conyard.harkonnen:
 	RenderSprites:
 		Image: conyard.harkonnen
 		-FactionImages:
+	UpdatesPlayerStatistics:
+		OverrideActor: construction_yard
 
 conyard.ordos:
 	Inherits: construction_yard
@@ -1254,3 +1275,5 @@ conyard.ordos:
 	RenderSprites:
 		Image: conyard.ordos
 		-FactionImages:
+	UpdatesPlayerStatistics:
+		OverrideActor: construction_yard

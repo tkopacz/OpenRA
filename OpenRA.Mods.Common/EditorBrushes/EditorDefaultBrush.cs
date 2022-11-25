@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -10,11 +10,8 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using OpenRA.Graphics;
 using OpenRA.Mods.Common.Traits;
-using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Widgets
 {
@@ -32,7 +29,9 @@ namespace OpenRA.Mods.Common.Widgets
 		readonly World world;
 		readonly EditorViewportControllerWidget editorWidget;
 		readonly EditorActorLayer editorLayer;
-		readonly Dictionary<int, ResourceType> resources;
+		readonly EditorActionManager editorActionManager;
+		readonly IResourceLayer resourceLayer;
+
 		public EditorActorPreview SelectedActor;
 		int2 worldPixel;
 
@@ -43,8 +42,8 @@ namespace OpenRA.Mods.Common.Widgets
 			world = wr.World;
 
 			editorLayer = world.WorldActor.Trait<EditorActorLayer>();
-			resources = world.WorldActor.TraitsImplementing<ResourceType>()
-				.ToDictionary(r => r.Info.ResourceType, r => r);
+			editorActionManager = world.WorldActor.Trait<EditorActionManager>();
+			resourceLayer = world.WorldActor.TraitOrDefault<IResourceLayer>();
 		}
 
 		long CalculateActorSelectionPriority(EditorActorPreview actor)
@@ -72,13 +71,12 @@ namespace OpenRA.Mods.Common.Widgets
 			var cell = worldRenderer.Viewport.ViewToWorld(mi.Location);
 
 			var underCursor = editorLayer.PreviewsAt(worldPixel).MinByOrDefault(CalculateActorSelectionPriority);
+			var resourceUnderCursor = resourceLayer?.GetResource(cell).Type;
 
-			var mapResources = world.Map.Resources;
-			ResourceType type;
 			if (underCursor != null)
 				editorWidget.SetTooltip(underCursor.Tooltip);
-			else if (mapResources.Contains(cell) && resources.TryGetValue(mapResources[cell].Type, out type))
-				editorWidget.SetTooltip(type.Info.Type);
+			else if (resourceUnderCursor != null)
+				editorWidget.SetTooltip(resourceUnderCursor);
 			else
 				editorWidget.SetTooltip(null);
 
@@ -97,10 +95,10 @@ namespace OpenRA.Mods.Common.Widgets
 				editorWidget.SetTooltip(null);
 
 				if (underCursor != null && underCursor != SelectedActor)
-					editorLayer.Remove(underCursor);
+					editorActionManager.Add(new RemoveActorAction(editorLayer, underCursor));
 
-				if (mapResources.Contains(cell) && mapResources[cell].Type != 0)
-					mapResources[cell] = default(ResourceTile);
+				if (resourceUnderCursor != null)
+					editorActionManager.Add(new RemoveResourceAction(resourceLayer, cell, resourceUnderCursor));
 			}
 
 			return true;
@@ -108,5 +106,71 @@ namespace OpenRA.Mods.Common.Widgets
 
 		public void Tick() { }
 		public void Dispose() { }
+	}
+
+	class RemoveActorAction : IEditorAction
+	{
+		public string Text { get; }
+
+		readonly EditorActorLayer editorActorLayer;
+		readonly EditorActorPreview actor;
+
+		public RemoveActorAction(EditorActorLayer editorActorLayer, EditorActorPreview actor)
+		{
+			this.editorActorLayer = editorActorLayer;
+			this.actor = actor;
+
+			Text = $"Removed {actor.Info.Name} ({actor.ID})";
+		}
+
+		public void Execute()
+		{
+			Do();
+		}
+
+		public void Do()
+		{
+			editorActorLayer.Remove(actor);
+		}
+
+		public void Undo()
+		{
+			editorActorLayer.Add(actor);
+		}
+	}
+
+	class RemoveResourceAction : IEditorAction
+	{
+		public string Text { get; }
+
+		readonly IResourceLayer resourceLayer;
+		readonly CPos cell;
+
+		ResourceLayerContents resourceContents;
+
+		public RemoveResourceAction(IResourceLayer resourceLayer, CPos cell, string resourceType)
+		{
+			this.resourceLayer = resourceLayer;
+			this.cell = cell;
+
+			Text = $"Removed {resourceType}";
+		}
+
+		public void Execute()
+		{
+			Do();
+		}
+
+		public void Do()
+		{
+			resourceContents = resourceLayer.GetResource(cell);
+			resourceLayer.ClearResources(cell);
+		}
+
+		public void Undo()
+		{
+			resourceLayer.ClearResources(cell);
+			resourceLayer.AddResource(resourceContents.Type, cell, resourceContents.Density);
+		}
 	}
 }

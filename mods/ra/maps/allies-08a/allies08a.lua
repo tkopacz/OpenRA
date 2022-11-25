@@ -1,5 +1,5 @@
 --[[
-   Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+   Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
    This file is part of OpenRA, which is free software. It is made
    available to you under the terms of the GNU General Public License
    as published by the Free Software Foundation, either version 3 of
@@ -74,26 +74,15 @@ CreateScientists = function()
 	end)
 end
 
-FinishTimer = function()
-	for i = 0, 5 do
-		local c = TimerColor
-		if i % 2 == 0 then
-			c = HSLColor.White
-		end
-
-		Trigger.AfterDelay(DateTime.Seconds(i), function() UserInterface.SetMissionText("The experiment is a success!", c) end)
-	end
-	Trigger.AfterDelay(DateTime.Seconds(6), function() UserInterface.SetMissionText("") end)
-end
-
 DefendChronosphereCompleted = function()
 	local cells = Utils.ExpandFootprint({ ChronoshiftLocation.Location }, false)
 	local units = { }
 	for i = 1, #cells do
-		local unit = Actor.Create("2tnk", true, { Owner = greece, Facing = 0 })
+		local unit = Actor.Create("2tnk", true, { Owner = greece, Facing = Angle.North })
 		units[unit] = cells[i]
 	end
 	Chronosphere.Chronoshift(units)
+	UserInterface.SetMissionText("The experiment is a success!", greece.Color)
 
 	Trigger.AfterDelay(DateTime.Seconds(3), function()
 		greece.MarkCompletedObjective(DefendChronosphere)
@@ -130,28 +119,11 @@ WorldLoaded = function()
 	ussr = Player.GetPlayer("USSR")
 	germany = Player.GetPlayer("Germany")
 
-	DefendChronosphere = greece.AddPrimaryObjective("Defend the Chronosphere and the Tech Center\nat all costs.")
-	KeepBasePowered = greece.AddPrimaryObjective("The Chronosphere must have power when the\ntimer runs out.")
-	EvacuateScientists = greece.AddSecondaryObjective("Evacuate all scientists from the island to\nthe west.")
-	BeatAllies = ussr.AddPrimaryObjective("Defeat the Allied forces.")
-
-	Trigger.OnObjectiveCompleted(greece, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective completed")
-	end)
-	Trigger.OnObjectiveFailed(greece, function(p, id)
-		Media.DisplayMessage(p.GetObjectiveDescription(id), "Objective failed")
-	end)
-
-	Trigger.OnPlayerLost(greece, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(greece, "MissionFailed")
-		end)
-	end)
-	Trigger.OnPlayerWon(greece, function()
-		Trigger.AfterDelay(DateTime.Seconds(1), function()
-			Media.PlaySpeechNotification(greece, "MissionAccomplished")
-		end)
-	end)
+	InitObjectives(greece)
+	DefendChronosphere = greece.AddObjective("Defend the Chronosphere and the Tech Center\nat all costs.")
+	KeepBasePowered = greece.AddObjective("The Chronosphere must have power when the\ntimer runs out.")
+	EvacuateScientists = greece.AddObjective("Evacuate all scientists from the island to\nthe west.", "Secondary", false)
+	BeatAllies = ussr.AddObjective("Defeat the Allied forces.")
 
 	Trigger.AfterDelay(DateTime.Minutes(1), function()
 		Media.PlaySpeechNotification(greece, "TwentyMinutesRemaining")

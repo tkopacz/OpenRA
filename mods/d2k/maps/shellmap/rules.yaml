@@ -1,21 +1,23 @@
 Player:
 	-ConquestVictoryConditions:
 	-HarvesterInsurance:
+	PlayerResources:
+		ResourceValues:
+			Spice: 0
 
 World:
 	-CrateSpawner:
-	-SpawnMPUnits:
-	-MPStartLocations:
-	ResourceType@Spice:
-		ValuePerUnit: 0
+	-SpawnStartingUnits:
+	-MapStartingLocations:
 	ActorSpawnManager:
 		Minimum: 1
 		Maximum: 3
 	MusicPlaylist:
 		BackgroundMusic: options
+		AllowMuteBackgroundMusic: true
 		DisableWorldSounds: true
 	LuaScript:
-		Scripts: d2k-shellmap.lua
+		Scripts: utils.lua, d2k-shellmap.lua
 
 ^ExistsInWorld:
 	-GivesExperience:

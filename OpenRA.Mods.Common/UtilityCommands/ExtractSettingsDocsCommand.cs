@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -16,7 +16,7 @@ namespace OpenRA.Mods.Common.UtilityCommands
 {
 	class ExtractSettingsDocsCommand : IUtilityCommand
 	{
-		string IUtilityCommand.Name { get { return "--settings-docs"; } }
+		string IUtilityCommand.Name => "--settings-docs";
 
 		bool IUtilityCommand.ValidateArguments(string[] args)
 		{
@@ -40,8 +40,14 @@ namespace OpenRA.Mods.Common.UtilityCommands
 			Console.WriteLine("All settings can be changed by starting the game via a command-line parameter like `Game.Mod=ra`.");
 			Console.WriteLine();
 			Console.WriteLine("## Location");
-			Console.WriteLine("* Windows: `My Documents\\OpenRA\\settings.yaml`");
+			Console.WriteLine("* Windows: `%APPDATA%\\OpenRA\\settings.yaml`");
 			Console.WriteLine("* Mac OS X: `~/Library/Application Support/OpenRA/settings.yaml`");
+			Console.WriteLine("* Linux `~/.config/openra/settings.yaml`");
+			Console.WriteLine();
+			Console.WriteLine(
+				"Older releases (before playtest-20190825) used different locations, " +
+				"which newer versions may continue to use in some circumstances:");
+			Console.WriteLine("* Windows: `%USERPROFILE%\\Documents\\OpenRA\\settings.yaml`");
 			Console.WriteLine("* Linux `~/.openra/settings.yaml`");
 			Console.WriteLine();
 			Console.WriteLine(
@@ -53,8 +59,8 @@ namespace OpenRA.Mods.Common.UtilityCommands
 			foreach (var section in sections.OrderBy(s => s.Key))
 			{
 				var fields = section.Value.GetType().GetFields();
-				if (fields.Length > 0 && fields.Where(field => field.GetCustomAttributes<DescAttribute>(false).Length > 0).Count() > 0)
-					Console.WriteLine("## {0}", section.Key);
+				if (fields.Any(field => field.GetCustomAttributes<DescAttribute>(false).Length > 0))
+					Console.WriteLine($"## {section.Key}");
 				else
 					Console.WriteLine();
 
@@ -63,11 +69,11 @@ namespace OpenRA.Mods.Common.UtilityCommands
 					if (!field.HasAttribute<DescAttribute>())
 						continue;
 
-					Console.WriteLine("### {0}", field.Name);
+					Console.WriteLine($"### {field.Name}");
 					var lines = field.GetCustomAttributes<DescAttribute>(false).SelectMany(d => d.Lines);
 					foreach (var line in lines)
 					{
-						Console.WriteLine("{0}", line);
+						Console.WriteLine(line);
 						Console.WriteLine();
 					}
 
@@ -76,9 +82,9 @@ namespace OpenRA.Mods.Common.UtilityCommands
 					{
 						Console.WriteLine("**Default Value:** {0}", value);
 						Console.WriteLine();
-						Console.WriteLine("```yaml");
-						Console.WriteLine("{0}: ", section.Key);
-						Console.WriteLine("\t{0}: {1}", field.Name, value);
+						Console.WriteLine("```miniyaml");
+						Console.WriteLine($"{section.Key}: ");
+						Console.WriteLine($"\t{field.Name}: {value}");
 						Console.WriteLine("```");
 					}
 					else

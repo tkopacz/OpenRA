@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -16,15 +16,14 @@ using OpenRA.Traits;
 
 namespace OpenRA.Mods.Common.Traits
 {
-	public class PlayerResourcesInfo : ITraitInfo, ILobbyOptions
+	[TraitLocation(SystemActors.Player | SystemActors.EditorPlayer)]
+	public class PlayerResourcesInfo : TraitInfo, ILobbyOptions
 	{
-		[Translate]
 		[Desc("Descriptive label for the starting cash option in the lobby.")]
 		public readonly string DefaultCashDropdownLabel = "Starting Cash";
 
-		[Translate]
 		[Desc("Tooltip description for the starting cash option in the lobby.")]
-		public readonly string DefaultCashDropdownDescription = "Change the amount of cash that players start with";
+		public readonly string DefaultCashDropdownDescription = "The amount of cash that players start with";
 
 		[Desc("Starting cash options that are available in the lobby options.")]
 		public readonly int[] SelectableCash = { 2500, 5000, 10000, 20000 };
@@ -45,8 +44,11 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("Speech notification to play when the player does not have any funds.")]
 		public readonly string InsufficientFundsNotification = null;
 
+		[Desc("Text notification to display when the player does not have any funds.")]
+		public readonly string InsufficientFundsTextNotification = null;
+
 		[Desc("Delay (in ticks) during which warnings will be muted.")]
-		public readonly int InsufficientFundsNotificationDelay = 750;
+		public readonly int InsufficientFundsNotificationInterval = 30000;
 
 		[NotificationReference("Sounds")]
 		public readonly string CashTickUpNotification = null;
@@ -54,19 +56,22 @@ namespace OpenRA.Mods.Common.Traits
 		[NotificationReference("Sounds")]
 		public readonly string CashTickDownNotification = null;
 
-		IEnumerable<LobbyOption> ILobbyOptions.LobbyOptions(Ruleset rules)
+		[Desc("Monetary value of each resource type.", "Dictionary of [resource type]: [value per unit].")]
+		public readonly Dictionary<string, int> ResourceValues = new Dictionary<string, int>();
+
+		IEnumerable<LobbyOption> ILobbyOptions.LobbyOptions(MapPreview map)
 		{
 			var startingCash = SelectableCash.ToDictionary(c => c.ToString(), c => "$" + c.ToString());
 
-			if (startingCash.Any())
+			if (startingCash.Count > 0)
 				yield return new LobbyOption("startingcash", DefaultCashDropdownLabel, DefaultCashDropdownDescription, DefaultCashDropdownVisible, DefaultCashDropdownDisplayOrder,
-					new ReadOnlyDictionary<string, string>(startingCash), DefaultCash.ToString(), DefaultCashDropdownLocked);
+					startingCash, DefaultCash.ToString(), DefaultCashDropdownLocked);
 		}
 
-		public object Create(ActorInitializer init) { return new PlayerResources(init.Self, this); }
+		public override object Create(ActorInitializer init) { return new PlayerResources(init.Self, this); }
 	}
 
-	public class PlayerResources : ITick, ISync
+	public class PlayerResources : ISync
 	{
 		public readonly PlayerResourcesInfo Info;
 		readonly Player owner;
@@ -81,6 +86,8 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (!int.TryParse(startingCash, out Cash))
 				Cash = info.DefaultCash;
+
+			lastNotificationTime = -Info.InsufficientFundsNotificationInterval;
 		}
 
 		[Sync]
@@ -95,7 +102,7 @@ namespace OpenRA.Mods.Common.Traits
 		public int Earned;
 		public int Spent;
 
-		int lastNotificationTick;
+		long lastNotificationTime;
 
 		public int ChangeCash(int amount)
 		{
@@ -175,11 +182,11 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			if (Cash + Resources < num)
 			{
-				if (notifyLowFunds && !string.IsNullOrEmpty(Info.InsufficientFundsNotification) &&
-					owner.World.WorldTick - lastNotificationTick >= Info.InsufficientFundsNotificationDelay)
+				if (notifyLowFunds && Game.RunTime > lastNotificationTime + Info.InsufficientFundsNotificationInterval)
 				{
-					lastNotificationTick = owner.World.WorldTick;
+					lastNotificationTime = Game.RunTime;
 					Game.Sound.PlayNotification(owner.World.Map.Rules, owner, "Speech", Info.InsufficientFundsNotification, owner.Faction.InternalName);
+					TextNotificationsManager.AddTransientLine(Info.InsufficientFundsTextNotification, owner);
 				}
 
 				return false;
@@ -197,13 +204,14 @@ namespace OpenRA.Mods.Common.Traits
 			return true;
 		}
 
-		void ITick.Tick(Actor self)
+		public void AddStorage(int capacity)
 		{
-			// PERF: Avoid LINQ.
-			ResourceCapacity = 0;
-			foreach (var tp in self.World.ActorsWithTrait<IStoreResources>())
-				if (tp.Actor.Owner == owner)
-					ResourceCapacity += tp.Trait.Capacity;
+			ResourceCapacity += capacity;
+		}
+
+		public void RemoveStorage(int capacity)
+		{
+			ResourceCapacity -= capacity;
 
 			if (Resources > ResourceCapacity)
 				Resources = ResourceCapacity;

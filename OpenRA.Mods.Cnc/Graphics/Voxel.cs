@@ -1,6 +1,6 @@
 #region Copyright & License Information
 /*
- * Copyright 2007-2019 The OpenRA Developers (see AUTHORS)
+ * Copyright 2007-2022 The OpenRA Developers (see AUTHORS)
  * This file is part of OpenRA, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -32,13 +32,13 @@ namespace OpenRA.Mods.Cnc.Graphics
 		readonly uint frames;
 		readonly uint limbs;
 
-		uint IModel.Frames { get { return frames; } }
-		uint IModel.Sections { get { return limbs; } }
+		uint IModel.Frames => frames;
+		uint IModel.Sections => limbs;
 
-		public Voxel(VoxelLoader loader, VxlReader vxl, HvaReader hva)
+		public Voxel(VoxelLoader loader, VxlReader vxl, HvaReader hva, (string Vxl, string Hva) files)
 		{
 			if (vxl.LimbCount != hva.LimbCount)
-				throw new InvalidOperationException("Voxel and hva limb counts don't match");
+				throw new InvalidOperationException($"{files.Vxl}.vxl and {files.Hva}.hva limb counts don't match.");
 
 			transforms = hva.Transforms;
 			frames = hva.FrameCount;
@@ -60,9 +60,9 @@ namespace OpenRA.Mods.Cnc.Graphics
 		public float[] TransformationMatrix(uint limb, uint frame)
 		{
 			if (frame >= frames)
-				throw new ArgumentOutOfRangeException("frame", "Only {0} frames exist.".F(frames));
+				throw new ArgumentOutOfRangeException(nameof(frame), $"Only {frames} frames exist.");
 			if (limb >= limbs)
-				throw new ArgumentOutOfRangeException("limb", "Only {1} limbs exist.".F(limbs));
+				throw new ArgumentOutOfRangeException(nameof(limb), $"Only {limbs} limbs exist.");
 
 			var l = limbData[limb];
 			var t = new float[16];
@@ -74,8 +74,8 @@ namespace OpenRA.Mods.Cnc.Graphics
 			t[14] *= l.Scale * (l.Bounds[5] - l.Bounds[2]) / l.Size[2];
 
 			// Center, flip and scale
-			t = Util.MatrixMultiply(t, Util.TranslationMatrix(l.Bounds[0], l.Bounds[1], l.Bounds[2]));
-			t = Util.MatrixMultiply(Util.ScaleMatrix(l.Scale, -l.Scale, l.Scale), t);
+			t = OpenRA.Graphics.Util.MatrixMultiply(t, OpenRA.Graphics.Util.TranslationMatrix(l.Bounds[0], l.Bounds[1], l.Bounds[2]));
+			t = OpenRA.Graphics.Util.MatrixMultiply(OpenRA.Graphics.Util.ScaleMatrix(l.Scale, -l.Scale, l.Scale), t);
 
 			return t;
 		}
@@ -119,7 +119,7 @@ namespace OpenRA.Mods.Cnc.Graphics
 				};
 
 				// Calculate limb bounding box
-				var bb = Util.MatrixAABBMultiply(TransformationMatrix(j, frame), b);
+				var bb = OpenRA.Graphics.Util.MatrixAABBMultiply(TransformationMatrix(j, frame), b);
 				for (var i = 0; i < 3; i++)
 				{
 					ret[i] = Math.Min(ret[i], bb[i]);

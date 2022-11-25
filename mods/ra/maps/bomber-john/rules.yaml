@@ -3,7 +3,7 @@ World:
 		CheckboxEnabled: False
 		CheckboxLocked: True
 		CheckboxVisible: False
-	-SpawnMPUnits:
+	-SpawnStartingUnits:
 	MapBuildRadius:
 		AllyBuildRadiusCheckboxLocked: True
 		AllyBuildRadiusCheckboxEnabled: False
@@ -12,10 +12,13 @@ World:
 		BuildRadiusCheckboxEnabled: True
 		BuildRadiusCheckboxVisible: False
 	MapOptions:
+		ShortGameCheckboxVisible: False
+		ShortGameCheckboxLocked: True
+		ShortGameCheckboxEnabled: False
 		TechLevelDropdownLocked: True
 		TechLevelDropdownVisible: False
 		TechLevel: unrestricted
-	MPStartLocations:
+	MapStartingLocations:
 		SeparateTeamSpawnsCheckboxVisible: false
 	Locomotor@LIGHTTRACKED:
 		WaitAverage: 1
@@ -80,26 +83,33 @@ Player:
 	ChronoshiftPower:
 		Icon: chrono
 		ChargeInterval: 1500
-		Description: Chronoshift
-		LongDesc: Teleport a group of vehicles across\nthe map.
+		Name: Chronoshift
+		Description: Teleport a group of vehicles across\nthe map.
 		SelectTargetSound: slcttgt1.aud
 		BeginChargeSound: chrochr1.aud
 		EndChargeSound: chrordy1.aud
-		KillCargo: yes
-		Range: 3
+		KillCargo: true
+		Dimensions: 7, 7
+		Footprint: ___x___ __xxx__ _xxxxx_ xxxxxxx _xxxxx_ __xxx__ ___x___
 	GrantExternalConditionPower@IRONCURTAIN:
 		Icon: invuln
 		ChargeInterval: 750
-		Description: Invulnerability
-		LongDesc: Makes a unit invulnerable\nfor 3 seconds.
+		Name: Invulnerability
+		Description: Makes a unit invulnerable\nfor 3 seconds.
 		Duration: 75
-		SelectTargetSound: slcttgt1.aud
-		BeginChargeSound: ironchg1.aud
-		EndChargeSound: ironrdy1.aud
-		Range: 1
+		SelectTargetSpeechNotification: SelectTarget
+		InsufficientPowerSpeechNotification: InsufficientPower
+		BeginChargeSpeechNotification: IronCurtainCharging
+		EndChargeSpeechNotification: IronCurtainReady
+		SelectTargetTextNotification: Select target.
+		InsufficientPowerTextNotification: Insufficient power.
+		BeginChargeTextNotification: Iron curtain charging.
+		EndChargeTextNotification: Iron curtain ready.
 		Condition: invulnerability
 		Sequence: idle
 		OnFireSound: ironcur9.aud
+		Dimensions: 3, 3
+		Footprint: _x_ xxx _x_
 	Production:
 		Produces: Building
 	LobbyPrerequisiteCheckbox@GLOBALBOUNTY:
@@ -107,6 +117,8 @@ Player:
 		Locked: True
 		Visible: False
 	LobbyPrerequisiteCheckbox@GLOBALFACTUNDEPLOY:
+		Visible: False
+	LobbyPrerequisiteCheckbox@REUSABLEENGINEERS:
 		Visible: False
 
 MNLYR:
@@ -121,7 +133,7 @@ MNLYR:
 		Type: Heavy
 	Mobile:
 		Speed: 128
-		TurnSpeed: 900
+		TurnSpeed: 512
 	RevealsShroud:
 		Range: 40c0
 	MustBeDestroyed:
@@ -129,7 +141,7 @@ MNLYR:
 	Transforms:
 		IntoActor: ftur
 		Offset: 0,0
-		Facing: 96
+		Facing: 384
 	CashTrickler:
 		Interval: 150
 		Amount: 20
@@ -145,7 +157,7 @@ FTUR:
 	Transforms:
 		IntoActor: mnlyr
 		Offset: 0,0
-		Facing: 96
+		Facing: 384
 	MustBeDestroyed:
 		RequiredForShortGame: true
 	CashTrickler:
@@ -173,10 +185,10 @@ MINVV:
 	WithSpriteBody:
 	Tooltip:
 		Name: Bomb
-	SelfHealing:
+	ChangesHealth:
 		Step: -100
 		Delay: 1
-		HealIfBelow: 101
+		StartIfBelow: 101
 	Explodes:
 		Weapon: CrateNuke
 		EmptyWeapon: CrateNuke
